@@ -18,7 +18,7 @@ The Azure Key Vault agent container does the following -
 * A Kubernetes cluster with a working `kubectl`
 
 # How to use it
-* Create a Azure Key Vault and give your cluster's service principle a "get" permission so it can grab secrets
+* Config your Azure Key Vault to give your cluster's service principle a "get" permission so it can grab secrets
 * Clone the project to your desired folder 
 * Build the agent image using docker
 ```
