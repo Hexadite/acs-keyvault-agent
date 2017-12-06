@@ -14,7 +14,7 @@ The Azure Key Vault agent container does the following -
 * Authentication to Azure Key Vault is done securely without any secrets or config maps being used
 
 # Requirements
-* An deployed Azure Key Vault
+* A deployed Azure Key Vault
 * A Kubernetes cluster with a working `kubectl`
 
 # How to use it
