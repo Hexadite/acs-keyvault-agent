@@ -79,19 +79,47 @@ class KeyVaultAgent(object):
         """
         vault_base_url = os.getenv('VAULT_BASE_URL')
         secrets_keys = os.getenv('SECRETS_KEYS')
+        certs_keys = os.getenv('CERTS_KEYS')
         output_folder = os.getenv('SECRETS_FOLDER')
+	secrets_output_folder = os.path.join(output_folder, "secrets")
+	certs_output_folder = os.path.join(output_folder, "certs")
+
+        if not os.path.exists(secrets_output_folder) :
+              os.makedirs(secrets_output_folder)
+        if not os.path.exists(certs_output_folder) :
+              os.makedirs(certs_output_folder)
+
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
-        for key_info in filter(None, secrets_keys.split(';')):
-            key_name, _, key_version = key_info.partition(':')
-            _logger.info('Retrieving secret name:%s with version: %s', key_name, key_version)
-            secret = client.get_secret(vault_base_url, key_name, key_version)
-            output_path = os.path.join(output_folder, key_name)
-            _logger.info('Dumping secret value to: %s', output_path)
-            with open(output_path, 'w') as secret_file:
-                secret_file.write(secret.value)
+        if secrets_keys is not None:
+             for key_info in filter(None, secrets_keys.split(';')):
+                   key_name, _, key_version = key_info.partition(':')
+                   _logger.info('Retrieving secret name:%s with version: %s', key_name, key_version)
+           	   secret = client.get_secret(vault_base_url, key_name, key_version)
+                   output_path = os.path.join(secrets_output_folder, key_name)
+                   _logger.info('Dumping secret value to: %s', output_path)
+                   with open(output_path, 'w') as secret_file:
+                         secret_file.write(secret.value)
 
+        if certs_keys is not None:
+              for key_info in filter(None, certs_keys.split(';')):
+                  key_name, _, key_version = key_info.partition(':')
+                  _logger.info('Retrieving cert name:%s with version: %s', key_name, key_version)
+                  cert = client.get_certificate(vault_base_url, key_name, key_version)
+                  output_path = os.path.join(certs_output_folder, key_name)
+                  _logger.info('Dumping cert value to: %s', output_path)
+                  with open(output_path, 'w') as cert_file:
+                      cert_file.write(self.to_pem(cert.cer))
+
+    def to_pem(self, cert):
+              import base64
+              encoded = base64.encodestring(cert) 
+              if isinstance(encoded, bytes):
+                      encoded = encoded.decode("utf-8")
+              encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
+
+              return encoded
 
 if __name__ == '__main__':
     _logger.info('Grabbing secrets from Key Vault')
