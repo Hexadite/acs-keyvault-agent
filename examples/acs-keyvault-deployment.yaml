@@ -31,6 +31,8 @@ spec:
           value: /secrets
         - name: SECRETS_KEYS
           value: <SECRET_KEYS>
+        - name: CERTS_KEYS
+          value: <CERT_KEYS>
 
         volumeMounts:
         - name: secrets

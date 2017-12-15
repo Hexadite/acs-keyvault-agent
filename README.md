@@ -5,7 +5,7 @@ An Azure Key Vault agent container that grabs secrets from Azure Key Vault secur
 The Azure Key Vault agent container does the following - 
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
-* It then grabs the desired secrets from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
+* It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
 * It terminates and let other containers run
 * Finally, other containers have access to the secrets using a shared volume
 
@@ -36,6 +36,7 @@ docker push <image_tag>
   * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>` 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
+  * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
   
 
 * Create the deployment using
@@ -48,7 +49,8 @@ kubectl exec -ti test-keyvault-7d94566cdb-7wmx9 -c test-app /bin/sh
 ```
 and now just view the secrets with 
 ```
-cat /secrets/<secret_name>
+cat /secrets/secrets/<secret_name>
+cat /secrets/certs/<certificate_name>
 ```
 
 
