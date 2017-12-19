@@ -6,6 +6,7 @@ The Azure Key Vault agent container does the following -
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
 * It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
+* If a secret refers to a key that is backing a certificate, both private key and certificate are exported as pem
 * It terminates and let other containers run
 * Finally, other containers have access to the secrets using a shared volume
 
@@ -31,9 +32,9 @@ docker push <image_tag>
 ```
 
 * Edit `examples/acs-keyvault-deployment.yaml` file and change - 
-  * `<IMAGE_PATH>` - the image you just built earlier
-  * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`
-  * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>` 
+  * `<IMAGE_PATH>` - the image you just built earlier.
+  * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
+  * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
@@ -51,6 +52,7 @@ and now just view the secrets with
 ```
 cat /secrets/secrets/<secret_name>
 cat /secrets/certs/<certificate_name>
+cat /secrets/keys/<key_name>
 ```
 
 
