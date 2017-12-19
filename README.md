@@ -6,7 +6,7 @@ The Azure Key Vault agent container does the following -
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
 * It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
-* If a secret refers to a key that is backing a certificate, both private key and certificates are exported as pem
+* If a secret refers to a key that is backing a certificate, both private key and certificate are exported as pem
 * It terminates and let other containers run
 * Finally, other containers have access to the secrets using a shared volume
 
@@ -52,7 +52,7 @@ and now just view the secrets with
 ```
 cat /secrets/secrets/<secret_name>
 cat /secrets/certs/<certificate_name>
-cat /secrets/keys/<secret_name>
+cat /secrets/keys/<key_name>
 ```
 
 
