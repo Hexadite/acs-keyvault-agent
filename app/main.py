@@ -97,7 +97,7 @@ class KeyVaultAgent(object):
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
-                key_name, _, key_version = key_info.partition(':')
+                key_name, _, key_version = key_info.strip().partition(':')
                 _logger.info('Retrieving secret name:%s with version: %s', key_name, key_version)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
                 output_path = os.path.join(self._secrets_output_folder, key_name)
@@ -110,7 +110,7 @@ class KeyVaultAgent(object):
 
         if certs_keys is not None:
             for key_info in filter(None, certs_keys.split(';')):
-                key_name, _, key_version = key_info.partition(':')
+                key_name, _, key_version = key_info.strip().partition(':')
                 _logger.info('Retrieving cert name:%s with version: %s', key_name, key_version)
                 cert = client.get_certificate(vault_base_url, key_name, key_version)
                 output_path = os.path.join(self._certs_output_folder, key_name)
