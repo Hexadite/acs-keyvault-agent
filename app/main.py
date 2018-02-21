@@ -100,7 +100,11 @@ class KeyVaultAgent(object):
                    output_path = os.path.join(self.secrets_output_folder, key_name)
                    if secret.kid is not None:
                          _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                         self.dump_pfx(secret.value, key_name)
+                         if secret.content_type == 'application/x-pkcs12':
+                               self.dump_pfx(secret.value, key_name)
+                         else:
+                               _logger.error('Secret is not in pkcs12 format')
+                               sys.exit(1)
                    _logger.info('Dumping secret value to: %s', output_path)
                    with open(output_path, 'w') as secret_file:
                          secret_file.write(secret.value)
@@ -121,10 +125,15 @@ class KeyVaultAgent(object):
               p12 = crypto.load_pkcs12(base64.decodestring(pfx))
               pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
               cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
+              ca_certs = p12.get_ca_certificates()
               with open(os.path.join(self.keys_output_folder, name), 'w') as key_file:
                     key_file.write(pk)
               with open(os.path.join(self.certs_output_folder, name), 'w') as cert_file:
                     cert_file.write(cert)
+              if ca_certs is not None:
+                    with open(os.path.join(self.certs_output_folder, name), 'a') as cert_file:
+                         for cert in ca_certs:
+                               cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert)) 
               
     def cert_to_pem(self, cert):
               import base64
