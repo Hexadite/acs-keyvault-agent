@@ -97,37 +97,57 @@ class KeyVaultAgent(object):
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
-                key_name, _, key_version = key_info.strip().partition(':')
-                _logger.info('Retrieving secret name:%s with version: %s', key_name, key_version)
+                key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
+                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
                 output_path = os.path.join(self._secrets_output_folder, key_name)
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                    self._dump_pfx(secret.value, key_name)
+                    self._dump_pfx(secret.value, cert_filename, key_filename)
                 _logger.info('Dumping secret value to: %s', output_path)
                 with open(output_path, 'w') as secret_file:
                     secret_file.write(secret.value)
 
         if certs_keys is not None:
             for key_info in filter(None, certs_keys.split(';')):
-                key_name, _, key_version = key_info.strip().partition(':')
-                _logger.info('Retrieving cert name:%s with version: %s', key_name, key_version)
+                key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
+                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
                 cert = client.get_certificate(vault_base_url, key_name, key_version)
-                output_path = os.path.join(self._certs_output_folder, key_name)
+                output_path = os.path.join(self._certs_output_folder, cert_filename)
                 _logger.info('Dumping cert value to: %s', output_path)
                 with open(output_path, 'w') as cert_file:
                     cert_file.write(self._cert_to_pem(cert.cer))
 
-    def _dump_pfx(self, pfx, name):
+    def _dump_pfx(self, pfx, cert_filename, key_filename):
         import base64
         from OpenSSL import crypto
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
         cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
-        with open(os.path.join(self._keys_output_folder, name), 'w') as key_file:
-            key_file.write(pk)
-        with open(os.path.join(self._certs_output_folder, name), 'w') as cert_file:
-            cert_file.write(cert)
+
+        if (cert_filename == key_filename):
+            with open(os.path.join(self._keys_output_folder, key_filename), 'w') as key_file:                
+                _logger.info('Dumping key value to: %s', os.path.join(self._keys_output_folder, key_filename))
+                key_file.write(pk)
+        else:
+            # write to same folder with different filename
+            _logger.info('Dumping key value to: %s', os.path.join(self._keys_output_folder, key_filename))
+            with open(os.path.join(self._certs_output_folder, key_filename), 'w') as key_file:
+                key_file.write(pk)
+        
+        with open(os.path.join(self._certs_output_folder, cert_filename), 'w') as cert_file:
+                _logger.info('Dumping key value to: %s', os.path.join(self._certs_output_folder, cert_filename))
+                cert_file.write(cert)
+
+    
+    @staticmethod
+    def _split_keyinfo(key_info):
+        key_parts = key_info.strip().split(':')
+        key_name = key_parts[0]
+        key_version = '' if len(key_parts) < 2 else key_parts[1]
+        cert_filename = key_name if len(key_parts) < 3 else key_parts[2]
+        key_filename = key_name if len(key_parts) < 4 else key_parts[3]
+        return key_name, key_version, cert_filename, key_filename
 
     @staticmethod
     def _cert_to_pem(cert):
