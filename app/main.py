@@ -100,12 +100,15 @@ class KeyVaultAgent(object):
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
-                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
+                _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-                output_path = os.path.join(self._secrets_output_folder, key_name)
+                output_path = os.path.join(self._secrets_output_folder, cert_filename)
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
                     self._dump_pfx(secret.value, cert_filename, key_filename)
+                elif (key_name != cert_filename):
+                    _logger.error('Cert filename provided for secret not backing a certificate.')
+                    return
                 _logger.info('Dumping secret value to: %s', output_path)
                 with open(output_path, 'w') as secret_file:
                     secret_file.write(secret.value)
@@ -127,24 +130,24 @@ class KeyVaultAgent(object):
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
         cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
+        key_path = ''
+        cert_path = ''
 
         if (cert_filename == key_filename):
-            with open(os.path.join(self._keys_output_folder, key_filename), 'w') as key_file:                
-                _logger.info('Dumping key value to: %s', os.path.join(self._keys_output_folder, key_filename))
-                key_file.write(pk)
-
-            with open(os.path.join(self._certs_output_folder, cert_filename), 'w') as cert_file:
-                _logger.info('Dumping key value to: %s', os.path.join(self._certs_output_folder, cert_filename))
-                cert_file.write(cert)                
+            key_path = os.path.join(self._keys_output_folder, key_filename)
+            cert_path = os.path.join(self._certs_output_folder, cert_filename)
         else:
             # write to certs_keys folder when cert_filename and key_filename specified
-            with open(os.path.join(self._cert_keys_output_folder, key_filename), 'w') as key_file:
-                _logger.info('Dumping key value to: %s', os.path.join(self._keys_output_folder, key_filename))
-                key_file.write(pk)
+            key_path = os.path.join(self._cert_keys_output_folder, key_filename)
+            cert_path = os.path.join(self._cert_keys_output_folder, cert_filename)
 
-            with open(os.path.join(self._cert_keys_output_folder, cert_filename), 'w') as cert_file:
-                _logger.info('Dumping key value to: %s', os.path.join(self._cert_keys_output_folder, cert_filename))
-                cert_file.write(cert)    
+        _logger.info('Dumping key value to: %s', key_path)
+        with open(key_path, 'w') as key_file:
+            key_file.write(pk)
+
+        _logger.info('Dumping cert value to: %s', cert_path)
+        with open(cert_path, 'w') as cert_file:
+            cert_file.write(cert)       
                     
     @staticmethod
     def _split_keyinfo(key_info):
@@ -153,14 +156,9 @@ class KeyVaultAgent(object):
         key_version = '' if len(key_parts) < 2 else key_parts[1]
         cert_filename = key_name if len(key_parts) < 3 else key_parts[2]
 
-        # key_filename set to cert_filename when only cert_filename 
+        # key_filename set to cert_filename when only cert_filename is given
         # key_filename default to key_name when cert and key filenames are not given
-        if (len(key_parts) == 4):
-            key_filename = key_parts[3]
-        elif (len(key_parts) == 3):
-            key_filename = cert_filename
-        else:
-            key_filename = key_name
+        key_filename = cert_filename if len(key_parts) < 4 else key_parts[3]
 
         return key_name, key_version, cert_filename, key_filename
 
