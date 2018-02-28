@@ -24,6 +24,7 @@
 #
 # --------------------------------------------------------------------------
 
+import sys
 import os
 import json
 import logging
@@ -99,16 +100,21 @@ class KeyVaultAgent(object):
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
+                # Secrets are not renamed. They will have same name
+                # Certs and keys can be renamed
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-                output_path = os.path.join(self._secrets_output_folder, cert_filename)
+                
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
                     self._dump_pfx(secret.value, cert_filename, key_filename)
                 elif (key_name != cert_filename):
-                    _logger.error('Cert filename provided for secret not backing a certificate.')
-                    return
+                    _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
+                    sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
+
+                # secret has same name as key_name
+                output_path = os.path.join(self._secrets_output_folder, key_name)
                 _logger.info('Dumping secret value to: %s', output_path)
                 with open(output_path, 'w') as secret_file:
                     secret_file.write(secret.value)
