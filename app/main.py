@@ -27,6 +27,7 @@
 import os
 import json
 import logging
+import base64
 
 from adal import AuthenticationContext
 from azure.keyvault.key_vault_client import KeyVaultClient
@@ -107,7 +108,7 @@ class KeyVaultAgent(object):
                                sys.exit(1)
                    _logger.info('Dumping secret value to: %s', output_path)
                    with open(output_path, 'w') as secret_file:
-                         secret_file.write(secret.value)
+                         secret_file.write(self.dump_secret(secret))
 
         if certs_keys is not None:
               for key_info in filter(None, certs_keys.split(';')):
@@ -119,8 +120,16 @@ class KeyVaultAgent(object):
                   with open(output_path, 'w') as cert_file:
                       cert_file.write(self.cert_to_pem(cert.cer))
 
+    def dump_secret(self, secret):
+              value = base64.decodestring(secret.value)
+              if secret.tags is not None and 'file-encoding' in secret.tags:
+                     encoding = secret.tags['file-encoding']
+                     if encoding == 'base64':
+                                 value = base64.decodestring(value)
+
+              return value
+
     def dump_pfx(self, pfx, name):
-              import base64
               from OpenSSL import crypto
               p12 = crypto.load_pkcs12(base64.decodestring(pfx))
               pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
