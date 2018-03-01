@@ -31,6 +31,20 @@ spec:
           value: /secrets
         - name: SECRETS_KEYS
           value: <SECRET_KEYS>
+          # <Secret_Keys> format
+          # Below format provides output filename for certificate and key
+          # Begin Example 1
+          # Secret backing a certificate and key. 
+          #Certificate and key will be stored with certs_keys folder with name CertFileName.pem and KeyFilename.pem
+          #<Secret>:<version>:<cert_filename>:<key_filename>
+        - name: SECRETS_KEYS
+          value: SecretName::CertFileName.pem:KeyFilename.pem
+          # End Example 1
+          # Begin Example 2
+          # Secret is not backing a certificate and key.  In this case script will error and exit as there is no secret backing a certificate
+        - name: SECRETS_KEYS
+          value: SecretName::CertFileName.pem
+          # End Example 2          
         - name: CERTS_KEYS
           value: <CERT_KEYS>
 
