@@ -24,6 +24,7 @@
 #
 # --------------------------------------------------------------------------
 
+import sys
 import os
 import json
 import logging
@@ -49,6 +50,10 @@ class KeyVaultAgent(object):
 
     def __init__(self):
         self._parse_sp_file()
+        self._secrets_output_folder = None
+        self._certs_output_folder = None
+        self._keys_output_folder = None
+        self._cert_keys_output_folder = None
 
     def _parse_sp_file(self):
         file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
@@ -82,76 +87,110 @@ class KeyVaultAgent(object):
         secrets_keys = os.getenv('SECRETS_KEYS')
         certs_keys = os.getenv('CERTS_KEYS')
         output_folder = os.getenv('SECRETS_FOLDER')
-	self.secrets_output_folder = os.path.join(output_folder, "secrets")
-	self.certs_output_folder = os.path.join(output_folder, "certs")
-        self.keys_output_folder = os.path.join(output_folder, "keys")
+        self._secrets_output_folder = os.path.join(output_folder, "secrets")
+        self._certs_output_folder = os.path.join(output_folder, "certs")
+        self._keys_output_folder = os.path.join(output_folder, "keys")
+        self._cert_keys_output_folder = os.path.join(output_folder, "certs_keys")
 
-        for folder in (self.secrets_output_folder, self.certs_output_folder, self.keys_output_folder):
-              if not os.path.exists(folder) :
-                    os.makedirs(folder)
+        for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
+            if not os.path.exists(folder):
+                os.makedirs(folder)
 
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
         if secrets_keys is not None:
-             for key_info in filter(None, secrets_keys.split(';')):
-                   key_name, _, key_version = key_info.partition(':')
-                   _logger.info('Retrieving secret name:%s with version: %s', key_name, key_version)
-           	   secret = client.get_secret(vault_base_url, key_name, key_version)
-                   output_path = os.path.join(self.secrets_output_folder, key_name)
-                   if secret.kid is not None:
-                         _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                         if secret.content_type == 'application/x-pkcs12':
-                               self.dump_pfx(secret.value, key_name)
-                         else:
-                               _logger.error('Secret is not in pkcs12 format')
-                               sys.exit(1)
-                   _logger.info('Dumping secret value to: %s', output_path)
-                   with open(output_path, 'w') as secret_file:
-                         secret_file.write(self.dump_secret(secret))
+            for key_info in filter(None, secrets_keys.split(';')):
+                # Secrets are not renamed. They will have same name
+                # Certs and keys can be renamed
+                key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
+                _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
+                secret = client.get_secret(vault_base_url, key_name, key_version)
+                
+                if secret.kid is not None:
+                    _logger.info('Secret is backing certificate. Dumping private key and certificate.')
+                    if secret.content_type == 'application/x-pkcs12':
+                        self._dump_pfx(secret.value, cert_filename, key_filename)
+                    else:
+                        _logger.error('Secret is not in pkcs12 format')
+                        sys.exit(1)
+                elif (key_name != cert_filename):
+                    _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
+                    sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
+
+                # secret has same name as key_name
+                output_path = os.path.join(self._secrets_output_folder, key_name)
+                _logger.info('Dumping secret value to: %s', output_path)
+                with open(output_path, 'w') as secret_file:
+                    secret_file.write(self._dump_secret(secret))
 
         if certs_keys is not None:
-              for key_info in filter(None, certs_keys.split(';')):
-                  key_name, _, key_version = key_info.partition(':')
-                  _logger.info('Retrieving cert name:%s with version: %s', key_name, key_version)
-                  cert = client.get_certificate(vault_base_url, key_name, key_version)
-                  output_path = os.path.join(self.certs_output_folder, key_name)
-                  _logger.info('Dumping cert value to: %s', output_path)
-                  with open(output_path, 'w') as cert_file:
-                      cert_file.write(self.cert_to_pem(cert.cer))
+            for key_info in filter(None, certs_keys.split(';')):
+                # only cert_filename is needed, key_filename is ignored with _
+                key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
+                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
+                cert = client.get_certificate(vault_base_url, key_name, key_version)
+                output_path = os.path.join(self._certs_output_folder, cert_filename)
+                _logger.info('Dumping cert value to: %s', output_path)
+                with open(output_path, 'w') as cert_file:
+                    cert_file.write(self._cert_to_pem(cert.cer))
 
-    def dump_secret(self, secret):
-              value = base64.decodestring(secret.value)
-              if secret.tags is not None and 'file-encoding' in secret.tags:
-                     encoding = secret.tags['file-encoding']
-                     if encoding == 'base64':
-                                 value = base64.decodestring(value)
+    def _dump_pfx(self, pfx, cert_filename, key_filename):
+        from OpenSSL import crypto
+        p12 = crypto.load_pkcs12(base64.decodestring(pfx))
+        pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
+        certs = (p12.get_certificate(),) + p12.get_ca_certificates() or ()
 
-              return value
+        if (cert_filename == key_filename):
+            key_path = os.path.join(self._keys_output_folder, key_filename)
+            cert_path = os.path.join(self._certs_output_folder, cert_filename)
+        else:
+            # write to certs_keys folder when cert_filename and key_filename specified
+            key_path = os.path.join(self._cert_keys_output_folder, key_filename)
+            cert_path = os.path.join(self._cert_keys_output_folder, cert_filename)
 
-    def dump_pfx(self, pfx, name):
-              from OpenSSL import crypto
-              p12 = crypto.load_pkcs12(base64.decodestring(pfx))
-              pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-              cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
-              ca_certs = p12.get_ca_certificates()
-              with open(os.path.join(self.keys_output_folder, name), 'w') as key_file:
-                    key_file.write(pk)
-              with open(os.path.join(self.certs_output_folder, name), 'w') as cert_file:
-                    cert_file.write(cert)
-              if ca_certs is not None:
-                    with open(os.path.join(self.certs_output_folder, name), 'a') as cert_file:
-                         for cert in ca_certs:
-                               cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert)) 
-              
-    def cert_to_pem(self, cert):
-              import base64
-              encoded = base64.encodestring(cert) 
-              if isinstance(encoded, bytes):
-                    encoded = encoded.decode("utf-8")
-              encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
+        _logger.info('Dumping key value to: %s', key_path)
+        with open(key_path, 'w') as key_file:
+            key_file.write(pk)
 
-              return encoded
+        _logger.info('Dumping certs to: %s', cert_path)
+        with open(cert_path, 'w') as cert_file:
+            for cert in certs:
+                cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+
+    @staticmethod
+    def _dump_secret(secret):
+        value = base64.decodestring(secret.value)
+        if secret.tags is not None and 'file-encoding' in secret.tags:
+            encoding = secret.tags['file-encoding']
+            if encoding == 'base64':
+                value = base64.decodestring(value)
+
+        return value
+
+    @staticmethod
+    def _split_keyinfo(key_info):
+        key_parts = key_info.strip().split(':')
+        key_name = key_parts[0]
+        key_version = '' if len(key_parts) < 2 else key_parts[1]
+        cert_filename = key_name if len(key_parts) < 3 else key_parts[2]
+
+        # key_filename set to cert_filename when only cert_filename is given
+        # key_filename default to key_name when cert and key filenames are not given
+        key_filename = cert_filename if len(key_parts) < 4 else key_parts[3]
+
+        return key_name, key_version, cert_filename, key_filename
+
+    @staticmethod
+    def _cert_to_pem(cert):
+        import base64
+        encoded = base64.encodestring(cert)
+        if isinstance(encoded, bytes):
+            encoded = encoded.decode("utf-8")
+        encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
+
+        return encoded
+
 
 if __name__ == '__main__':
     _logger.info('Grabbing secrets from Key Vault')
