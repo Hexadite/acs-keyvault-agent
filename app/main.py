@@ -139,7 +139,7 @@ class KeyVaultAgent(object):
         from OpenSSL import crypto
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-        certs = (p12.get_certificate(),) + p12.get_ca_certificates() or ()
+        certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
 
         if (cert_filename == key_filename):
             key_path = os.path.join(self._keys_output_folder, key_filename)
@@ -160,7 +160,7 @@ class KeyVaultAgent(object):
 
     @staticmethod
     def _dump_secret(secret):
-        value = base64.decodestring(secret.value)
+        value = secret.value
         if secret.tags is not None and 'file-encoding' in secret.tags:
             encoding = secret.tags['file-encoding']
             if encoding == 'base64':
@@ -183,7 +183,6 @@ class KeyVaultAgent(object):
 
     @staticmethod
     def _cert_to_pem(cert):
-        import base64
         encoded = base64.encodestring(cert)
         if isinstance(encoded, bytes):
             encoded = encoded.decode("utf-8")
