@@ -17,6 +17,7 @@ The Azure Key Vault agent container does the following -
 # Requirements
 * A deployed Azure Key Vault
 * A Kubernetes cluster with a working `kubectl`
+* The Kubernetes cluster's Service principal is added to the Access policies of the Key Vault
 
 # How to use it
 * Config your Azure Key Vault to give your cluster's service principle a "get" permission so it can grab secrets
