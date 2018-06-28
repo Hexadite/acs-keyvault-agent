@@ -33,6 +33,8 @@ import base64
 from adal import AuthenticationContext
 from azure.keyvault.key_vault_client import KeyVaultClient
 from msrestazure.azure_active_directory import AdalAuthentication
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -41,7 +43,6 @@ _logger = logging.getLogger('keyvault-agent')
 
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
 VAULT_RESOURCE_NAME = os.getenv('VAULT_RESOURCE_NAME', 'https://vault.azure.net')
-
 
 class KeyVaultAgent(object):
     """
@@ -54,6 +55,7 @@ class KeyVaultAgent(object):
         self._certs_output_folder = None
         self._keys_output_folder = None
         self._cert_keys_output_folder = None
+        self._api_instance = None
 
     def _parse_sp_file(self):
         file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
@@ -79,6 +81,31 @@ class KeyVaultAgent(object):
                                          self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
 
+    def _get_kubernetes_api_instance(self):
+        if self._api_instance is None:
+            config.load_incluster_config()
+            client.configuration.assert_hostname = False
+            self._api_instance = client.CoreV1Api()
+
+        return self._api_instance
+
+    def create_secret_objects(self, key, value):
+        api_instance = self._get_kubernetes_api_instance()
+        secret = client.V1Secret()
+        encoded_secret = base64.b64encode(bytes(value))
+
+        secret.metadata = client.V1ObjectMeta(name=key)
+        secret.type = "Opaque"
+        secret.data = {"secret": encoded_secret}
+
+        delete_secret = client.V1DeleteOptions()
+
+        try:
+            api_instance.delete_namespaced_secret(name=key, namespace="default", body=delete_secret)
+            api_instance.create_namespaced_secret(namespace="default", body=secret)
+        except:
+            _logger.exception("Failed to create secret")
+
     def grab_secrets(self):
         """
         Gets secrets from KeyVault and stores them in a folder
@@ -99,6 +126,17 @@ class KeyVaultAgent(object):
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
+        all_secrets = list(client.get_secrets(vault_base_url))
+        key_list = []
+        secrets_keys = ""
+        for secret in all_secrets:
+            split = secret.id.split('/')
+            key = split[len(split) - 1]
+            key_list.append(key)
+            if secrets_keys:
+                secrets_keys += ";"
+            secrets_keys += key
+
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
                 # Secrets are not renamed. They will have same name
@@ -106,7 +144,9 @@ class KeyVaultAgent(object):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-                
+
+                self.create_secret_objects(key_name, secret.value)
+
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
                     if secret.content_type == 'application/x-pkcs12':
