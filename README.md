@@ -35,13 +35,13 @@ docker push <image_tag>
 * Edit `examples/acs-keyvault-deployment.yaml` file and change - 
   * `<IMAGE_PATH>` - the image you just built earlier.
   * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
+  * `<GET_ALL_KEYS>` - true or false, whether or not you'd like to grab all secrets dynamically from Key Vault.
+  * `<CREATE_KUBERNETES_SECRETS>` - true or false, whether or not you'd like kubernetes secrets objects created.
+  * `<SECRETS_NAMESPACE>` - a string value if you want a namespace other than default.
   * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
-  * `<GET_ALL_KEYS>` - true or false, whether or not you'd like to grab all secrets dynamically from Key Vault.
-  * `<CREATE_KUBERNETES_SECRETS>` - true or false, whether or not you'd like kubernetes secrets objects created.
-  * `<SECRETS_NAMESPACE>` - a string value if you want a namespace other than default.
 
 * Create the deployment using
 ```
@@ -60,4 +60,6 @@ cat /secrets/keys/<key_name>
 
 # Logs
 * View init container logs:
+```
 kubectl logs <Pod ID> -c keyvault-agent
+```

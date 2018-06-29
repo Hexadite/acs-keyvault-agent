@@ -21,10 +21,10 @@ spec:
 
       initContainers:
       - name: keyvault-agent
-        image: <IMAGE_PATH>
+        image: cnadolny/acs-keyvault
         env:
         - name: VAULT_BASE_URL
-          value: <VAULT_URL>
+          value: https://pariskv.vault.azure.net/
         - name: SERVICE_PRINCIPLE_FILE_PATH
           value: /host/azure.json
         - name: SECRETS_FOLDER
@@ -34,30 +34,9 @@ spec:
         - name: SECRETS_NAMESPACE
           value: default
         - name: GET_ALL_KEYS
-          value: "false"
+          value: "true"
         - name: SECRETS_KEYS
-          value: <SECRET_KEYS>
-          # <Secret_Keys> format
-          # Begin Example 1
-          # Basic case - Secret not backing a certificate and key
-        - name: SECRETS_KEYS
-          value: SecretName
-          # End Example 1
-          # Below format provides output filename for certificate and key
-          # Begin Example 2
-          # Secret backing a certificate and key. 
-          #Certificate and key will be stored with certs_keys folder with name CertFileName.pem and KeyFilename.pem
-          #<Secret>:<version>:<cert_filename>:<key_filename>
-        - name: SECRETS_KEYS
-          value: SecretName::CertFileName.pem:KeyFilename.pem
-          # End Example 2
-          # Begin Example 3
-          # Secret is not backing a certificate and key.  In this case script will error and exit as there is no secret backing a certificate
-        - name: SECRETS_KEYS
-          value: SecretName::CertFileName.pem
-          # End Example 3          
-        - name: CERTS_KEYS
-          value: <CERT_KEYS>
+          value: test1-name1
 
         volumeMounts:
         - name: secrets

@@ -147,7 +147,12 @@ class KeyVaultAgent(object):
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
-        if get_all_keys.lower() is "true":
+        _logger.info(get_all_keys)
+        _logger.info(get_all_keys.lower())
+        _logger.info(create_kubernetes_secrets)
+        _logger.info(self._secrets_namespace)
+
+        if get_all_keys.lower() == "true":
             all_secrets = list(client.get_secrets(vault_base_url))
             key_list = []
             secrets_keys = ""
@@ -179,7 +184,7 @@ class KeyVaultAgent(object):
                     sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
 
                 # secret has same name as key_name
-                if create_kubernetes_secrets.lower() is "true":
+                if create_kubernetes_secrets.lower() == "true":
                     self.create_kubernetes_secret_objects(key_name, secret.value)
 
                 output_path = os.path.join(self._secrets_output_folder, key_name)
