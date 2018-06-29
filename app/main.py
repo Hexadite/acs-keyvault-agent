@@ -116,13 +116,14 @@ class KeyVaultAgent(object):
 
         secrets_list = self.get_kubernetes_secrets_list()
 
+        _logger.info('Creating or updating Kubernetes Secret object: %s', key)
         try:
             if key in secrets_list:
                 api_instance.patch_namespaced_secret(name=key, namespace=self._secrets_namespace, body=secret)
             else:
                 api_instance.create_namespaced_secret(namespace=self._secrets_namespace, body=secret)
         except:
-            _logger.exception("Failed to create secret") 
+            _logger.exception("Failed to create Kubernetes Secret") 
 
     def grab_secrets(self):
         """
@@ -147,12 +148,8 @@ class KeyVaultAgent(object):
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
-        _logger.info(get_all_keys)
-        _logger.info(get_all_keys.lower())
-        _logger.info(create_kubernetes_secrets)
-        _logger.info(self._secrets_namespace)
-
         if get_all_keys.lower() == "true":
+            _logger.info('Retrieving all secrets from Key Vault.')
             all_secrets = list(client.get_secrets(vault_base_url))
             key_list = []
             secrets_keys = ""
