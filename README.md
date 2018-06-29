@@ -39,7 +39,9 @@ docker push <image_tag>
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
-  
+  * `<GET_ALL_KEYS>` - true or false, whether or not you'd like to grab all secrets dynamically from Key Vault.
+  * `<CREATE_KUBERNETES_SECRETS>` - true or false, whether or not you'd like kubernetes secrets objects created.
+  * `<SECRETS_NAMESPACE>` - a string value if you want a namespace other than default.
 
 * Create the deployment using
 ```
@@ -56,4 +58,6 @@ cat /secrets/certs/<certificate_name>
 cat /secrets/keys/<key_name>
 ```
 
-
+# Logs
+* View init container logs:
+kubectl logs <Pod ID> -c keyvault-agent

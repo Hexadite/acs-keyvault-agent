@@ -56,6 +56,8 @@ class KeyVaultAgent(object):
         self._keys_output_folder = None
         self._cert_keys_output_folder = None
         self._api_instance = None
+        self._secrets_list = None
+        self._secrets_namespace = None
 
     def _parse_sp_file(self):
         file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
@@ -89,22 +91,38 @@ class KeyVaultAgent(object):
 
         return self._api_instance
 
-    def create_secret_objects(self, key, value):
+    def get_kubernetes_secrets_list(self):
+        if self._secrets_list is None:
+            api_instance = self._get_kubernetes_api_instance()
+            api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
+            secrets_list = api_response.items
+
+            secret_name_list = []
+            for item in secrets_list:
+                secret_name_list.append(item.metadata.name)
+
+            self._secrets_list = secret_name_list
+        
+        return self._secrets_list
+
+    def create_kubernetes_secret_objects(self, key, value):
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
         encoded_secret = base64.b64encode(bytes(value))
 
         secret.metadata = client.V1ObjectMeta(name=key)
         secret.type = "Opaque"
-        secret.data = {"secret": encoded_secret}
+        secret.data = { "secret" : encoded_secret }
 
-        delete_secret = client.V1DeleteOptions()
+        secrets_list = self.get_kubernetes_secrets_list()
 
         try:
-            api_instance.delete_namespaced_secret(name=key, namespace="default", body=delete_secret)
-            api_instance.create_namespaced_secret(namespace="default", body=secret)
+            if key in secrets_list:
+                api_instance.patch_namespaced_secret(name=key, namespace=self._secrets_namespace, body=secret)
+            else:
+                api_instance.create_namespaced_secret(namespace=self._secrets_namespace, body=secret)
         except:
-            _logger.exception("Failed to create secret")
+            _logger.exception("Failed to create secret") 
 
     def grab_secrets(self):
         """
@@ -114,6 +132,9 @@ class KeyVaultAgent(object):
         secrets_keys = os.getenv('SECRETS_KEYS')
         certs_keys = os.getenv('CERTS_KEYS')
         output_folder = os.getenv('SECRETS_FOLDER')
+        get_all_keys = os.getenv('GET_ALL_KEYS')
+        create_kubernetes_secrets = os.getenv('CREATE_KUBERNETES_SECRETS')
+        self._secrets_namespace = os.getenv('SECRETS_NAMESPACE')
         self._secrets_output_folder = os.path.join(output_folder, "secrets")
         self._certs_output_folder = os.path.join(output_folder, "certs")
         self._keys_output_folder = os.path.join(output_folder, "keys")
@@ -126,16 +147,17 @@ class KeyVaultAgent(object):
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
-        all_secrets = list(client.get_secrets(vault_base_url))
-        key_list = []
-        secrets_keys = ""
-        for secret in all_secrets:
-            split = secret.id.split('/')
-            key = split[len(split) - 1]
-            key_list.append(key)
-            if secrets_keys:
-                secrets_keys += ";"
-            secrets_keys += key
+        if get_all_keys.lower() is "true":
+            all_secrets = list(client.get_secrets(vault_base_url))
+            key_list = []
+            secrets_keys = ""
+            for secret in all_secrets:
+                split = secret.id.split('/')
+                key = split[len(split) - 1]
+                key_list.append(key)
+                if secrets_keys:
+                    secrets_keys += ";"
+                secrets_keys += key
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
@@ -144,8 +166,6 @@ class KeyVaultAgent(object):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-
-                self.create_secret_objects(key_name, secret.value)
 
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
@@ -159,6 +179,9 @@ class KeyVaultAgent(object):
                     sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
 
                 # secret has same name as key_name
+                if create_kubernetes_secrets.lower() is "true":
+                    self.create_kubernetes_secret_objects(key_name, secret.value)
+
                 output_path = os.path.join(self._secrets_output_folder, key_name)
                 _logger.info('Dumping secret value to: %s', output_path)
                 with open(output_path, 'w') as secret_file:
