@@ -92,14 +92,22 @@ class KeyVaultAgent(object):
         return self._api_instance
 
     def get_kubernetes_secrets_list(self):
+    #TODO: refactor
         if self._secrets_list is None:
             api_instance = self._get_kubernetes_api_instance()
-            api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
-            secrets_list = api_response.items
-
             secret_name_list = []
+            api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
+            continue_value = api_response.metadata._continue
+            secrets_list = api_response.items
             for item in secrets_list:
                 secret_name_list.append(item.metadata.name)
+
+            while continue_value is not None:
+                api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace, _continue = continue_value)
+                continue_value = api_response.metadata._continue
+                secrets_list = api_response.items
+                for item in secrets_list:
+                    secret_name_list.append(item.metadata.name)
 
             self._secrets_list = secret_name_list
         
@@ -126,11 +134,7 @@ class KeyVaultAgent(object):
             _logger.exception("Failed to create Kubernetes Secret") 
 
     def grab_secrets(self):
-        """
-        Gets secrets from KeyVault and stores them in a folder
-        """
         vault_base_url = os.getenv('VAULT_BASE_URL')
-        secrets_keys = os.getenv('SECRETS_KEYS')
         certs_keys = os.getenv('CERTS_KEYS')
         output_folder = os.getenv('SECRETS_FOLDER')
         get_all_keys = os.getenv('GET_ALL_KEYS')
@@ -141,18 +145,23 @@ class KeyVaultAgent(object):
         self._keys_output_folder = os.path.join(output_folder, "keys")
         self._cert_keys_output_folder = os.path.join(output_folder, "certs_keys")
 
-        for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
-            if not os.path.exists(folder):
-                os.makedirs(folder)
-
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
+        secrets_keys = ""
+
+        """
+        Gets all keys from KeyVault
+        """
+
+        """
+        Gets secrets from KeyVault and stores them in a folder
+        """
         if get_all_keys.lower() == "true":
             _logger.info('Retrieving all secrets from Key Vault.')
-            all_secrets = list(client.get_secrets(vault_base_url))
+
+            all_secrets = list(client.get_secrets(vault_base_url, maxresults=2))
             key_list = []
-            secrets_keys = ""
             for secret in all_secrets:
                 split = secret.id.split('/')
                 key = split[len(split) - 1]
@@ -160,6 +169,13 @@ class KeyVaultAgent(object):
                 if secrets_keys:
                     secrets_keys += ";"
                 secrets_keys += key
+        else:
+            secrets_keys = os.getenv('SECRETS_KEYS')
+            for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
+                if not os.path.exists(folder):
+                    os.makedirs(folder)
+
+        
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
@@ -186,8 +202,8 @@ class KeyVaultAgent(object):
 
                 output_path = os.path.join(self._secrets_output_folder, key_name)
                 _logger.info('Dumping secret value to: %s', output_path)
-                with open(output_path, 'w') as secret_file:
-                    secret_file.write(self._dump_secret(secret))
+                # with open(output_path, 'w') as secret_file:
+                #     secret_file.write(self._dump_secret(secret))
 
         if certs_keys is not None:
             for key_info in filter(None, certs_keys.split(';')):
@@ -197,8 +213,8 @@ class KeyVaultAgent(object):
                 cert = client.get_certificate(vault_base_url, key_name, key_version)
                 output_path = os.path.join(self._certs_output_folder, cert_filename)
                 _logger.info('Dumping cert value to: %s', output_path)
-                with open(output_path, 'w') as cert_file:
-                    cert_file.write(self._cert_to_pem(cert.cer))
+                # with open(output_path, 'w') as cert_file:
+                #     cert_file.write(self._cert_to_pem(cert.cer))
 
     def _dump_pfx(self, pfx, cert_filename, key_filename):
         from OpenSSL import crypto
@@ -215,13 +231,13 @@ class KeyVaultAgent(object):
             cert_path = os.path.join(self._cert_keys_output_folder, cert_filename)
 
         _logger.info('Dumping key value to: %s', key_path)
-        with open(key_path, 'w') as key_file:
-            key_file.write(pk)
+        # with open(key_path, 'w') as key_file:
+        #     key_file.write(pk)
 
         _logger.info('Dumping certs to: %s', cert_path)
-        with open(cert_path, 'w') as cert_file:
-            for cert in certs:
-                cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+        # with open(cert_path, 'w') as cert_file:
+        #     for cert in certs:
+        #         cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
     @staticmethod
     def _dump_secret(secret):

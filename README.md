@@ -1,5 +1,5 @@
 # Azure Key Vault Agent for ACS (Kubernetes)
-An Azure Key Vault agent container that grabs secrets from Azure Key Vault securely and passes them to other containers in its pod
+An Azure Key Vault agent container that grabs secrets from Azure Key Vault securely and passes them to other containers in its pod. You also have an option to create Kubernetes secrets objects.
 
 # How does it work?
 The Azure Key Vault agent container does the following - 
@@ -37,7 +37,7 @@ docker push <image_tag>
   * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
   * `<GET_ALL_KEYS>` - true or false, whether or not you'd like to grab all secrets dynamically from Key Vault.
   * `<CREATE_KUBERNETES_SECRETS>` - true or false, whether or not you'd like kubernetes secrets objects created.
-  * `<SECRETS_NAMESPACE>` - a string value if you want a namespace other than default.
+  * `<SECRETS_NAMESPACE>` - a string value if you want to use a namespace other than default.
   * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
