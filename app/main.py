@@ -149,7 +149,7 @@ class KeyVaultAgent(object):
         """
         Gets secrets from KeyVault and stores them in a folder or Kubernetes secret object
         """
-        if create_kubernetes_secrets.lower() == "true" and secrets_keys is False or secrets_keys is None:
+        if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true" and secrets_keys is False or secrets_keys is None:
             _logger.info('Retrieving all secrets from Key Vault.')
             secrets_keys = ""
 
@@ -181,7 +181,7 @@ class KeyVaultAgent(object):
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
 
-                if create_kubernetes_secrets.lower() == "true":
+                if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true":
                     self.create_kubernetes_secret_objects(key_name, secret.value)
                 else:
                     if secret.kid is not None:
@@ -207,7 +207,7 @@ class KeyVaultAgent(object):
                 key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
                 _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
                 cert = client.get_certificate(vault_base_url, key_name, key_version)
-                if create_kubernetes_secrets.lower() == "true":
+                if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true":
                     self.create_kubernetes_secret_objects(key_name, secret.value)
                 else:
                     output_path = os.path.join(self._certs_output_folder, cert_filename)
