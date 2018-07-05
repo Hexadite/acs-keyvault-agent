@@ -29,12 +29,6 @@ spec:
           value: /host/azure.json
         - name: SECRETS_FOLDER
           value: /secrets
-        - name: CREATE_KUBERNETES_SECRETS
-          value: "false"
-        - name: SECRETS_NAMESPACE
-          value: default
-        - name: GET_ALL_KEYS
-          value: "false"
         - name: SECRETS_KEYS
           value: <SECRET_KEYS>
           # <Secret_Keys> format
