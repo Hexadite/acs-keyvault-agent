@@ -11,60 +11,22 @@ spec:
         spec:
           restartPolicy: OnFailure
           containers:
-          - image: alpine:latest
+          - image: <IMAGE_PATH>
             name: test-app
-            command: ["/bin/sh", "-c", "--"]
-            args: ["while true; do sleep 5; done;"]
-            volumeMounts:
-            - name: secrets
-              mountPath: /secrets
-              readOnly: true
-
-          initContainers:
-          - name: keyvault-agent
-            image: <IMAGE_PATH>
             env:
             - name: VAULT_BASE_URL
               value: <VAULT_URL>
             - name: SERVICE_PRINCIPLE_FILE_PATH
               value: /host/azure.json
-            - name: SECRETS_FOLDER
-              value: /secrets
             - name: CREATE_KUBERNETES_SECRETS
-              value: "false"
+              value: "true"
             - name: SECRETS_NAMESPACE
               value: default
-            - name: GET_ALL_KEYS
-              value: "false"
-            - name: SECRETS_FOLDER
-              value: /secrets
-              # Below format provides output filename for certificate and key
-              # Begin Scenario 1
-              # Secret backing a certificate and key. Certificate and key will be stored with certs_keys folder with name CertFileName.pem and KeyFilename.pem
-            - name: SECRETS_KEYS
-              value: SecretName::CertFileName.pem:KeyFilename.pem
-              # end scenario 1
-              # Begin Scenario 2
-              # Secret is not backing a certificate and key.  In this case script will error and exit as there is no secret backing a certificate
-            - name: SECRETS_KEYS
-              value: SecretName::CertFileName.pem
-              # end scenario 2
-            - name: CERTS_KEYS
-              value: <CERT_KEYS>       
-
             volumeMounts:
-            - name: secrets
-              mountPath: /secrets
-
-            - name: host-sp
-              mountPath: /host/azure.json
-              readOnly: true
+              - name: host-sp
+                mountPath: /host/azure.json
+                readOnly: true
           volumes:
-          - name: secrets
-            emptyDir:
-              # we want the secrets to reside only in-memory
-              medium: Memory
-
           - name: host-sp
             hostPath:
               # this file contains the cluster service-principal, it exists on every node by default
