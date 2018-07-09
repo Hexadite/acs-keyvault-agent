@@ -44,44 +44,11 @@ _logger = logging.getLogger('keyvault-agent')
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
 VAULT_RESOURCE_NAME = os.getenv('VAULT_RESOURCE_NAME', 'https://vault.azure.net')
 
-class KeyVaultAgent(object):
-    """
-    A Key Vault agent that reads secrets from Key Vault and stores them in a folder
-    """
-
+class CreateKubernetesSecrets(object):
     def __init__(self):
-        self._parse_sp_file()
-        self._secrets_output_folder = None
-        self._certs_output_folder = None
-        self._keys_output_folder = None
-        self._cert_keys_output_folder = None
         self._api_instance = None
         self._secrets_list = None
         self._secrets_namespace = None
-
-    def _parse_sp_file(self):
-        file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
-        _logger.info('Parsing Service Principle file from: %s', file_path)
-        if not os.path.isfile(file_path):
-            raise Exception("Service Principle file doesn't exist: %s" % file_path)
-
-        with open(file_path, 'r') as sp_file:
-            sp_data = json.load(sp_file)
-            # retrieve the relevant values used to authenticate with Key Vault
-            self.tenant_id = sp_data['tenantId']
-            self.client_id = sp_data['aadClientId']
-            self.client_secret = sp_data['aadClientSecret']
-
-        _logger.info('Parsing Service Principle file completed')
-
-    def _get_client(self):
-        authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
-        _logger.info('Using authority: %s', authority)
-        context = AuthenticationContext(authority)
-        _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
-        credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
-                                         self.client_id, self.client_secret)
-        return KeyVaultClient(credentials)
 
     def _get_kubernetes_api_instance(self):
         if self._api_instance is None:
@@ -92,22 +59,23 @@ class KeyVaultAgent(object):
         return self._api_instance
 
     def get_kubernetes_secrets_list(self):
-    #TODO: refactor
         if self._secrets_list is None:
             api_instance = self._get_kubernetes_api_instance()
-            secret_name_list = []
             api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
-            continue_value = api_response.metadata._continue
-            secrets_list = api_response.items
-            for item in secrets_list:
-                secret_name_list.append(item.metadata.name)
+            
+            secret_name_list = []
+            should_continue = True
 
-            while continue_value is not None:
-                api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace, _continue = continue_value)
+            while should_continue is True:
                 continue_value = api_response.metadata._continue
                 secrets_list = api_response.items
                 for item in secrets_list:
                     secret_name_list.append(item.metadata.name)
+
+                if continue_value is not None:
+                    api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace, _continue = continue_value)
+                else:
+                    should_continue = False
 
             self._secrets_list = secret_name_list
         
@@ -117,8 +85,12 @@ class KeyVaultAgent(object):
         key = key.lower()
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
-        #TODO: Double check if secrets always come back from keyvault unencoded
-        encoded_secret = base64.b64encode(bytes(value))
+        encoded_secret = secret.value
+        
+        if secret.tags is not None and 'file-encoding' in secret.tags:
+            encoding = secret.tags['file-encoding']
+            if encoding != 'base64':
+                encoded_secret = base64.b64encode(bytes(value))
 
         secret.metadata = client.V1ObjectMeta(name=key)
         secret.type = "Opaque"
@@ -133,28 +105,23 @@ class KeyVaultAgent(object):
             else:
                 api_instance.create_namespaced_secret(namespace=self._secrets_namespace, body=secret)
         except:
-            _logger.exception("Failed to create Kubernetes Secret") 
+            _logger.exception("Failed to create or update Kubernetes Secret")
 
-    def grab_secrets(self):
+    def grab_secrets(self, client):
         vault_base_url = os.getenv('VAULT_BASE_URL')
-        certs_keys = os.getenv('CERTS_KEYS')
         secrets_keys = os.getenv('SECRETS_KEYS')
-        create_kubernetes_secrets = os.getenv('CREATE_KUBERNETES_SECRETS')
         self._secrets_namespace = os.getenv('SECRETS_NAMESPACE')
-        output_folder = os.getenv('SECRETS_FOLDER')
-
-        client = self._get_client()
+        if self._secrets_namespace is None:
+            self._secrets_namespace = "default"
+        
         _logger.info('Using vault: %s', vault_base_url)
-
-        """
-        Gets secrets from KeyVault and stores them in a folder or Kubernetes secret object
-        """
-        if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true" and secrets_keys is False or secrets_keys is None:
+        
+        # Right now, there is a bug in Key Vault that gets all keys regardless of the maxresult size of 25. 
+        # Eventually this will have to be changed to use some next_link variable in order to get the next page of keys when that bug is fixed.
+        if secrets_keys is False or secrets_keys is None:
             _logger.info('Retrieving all secrets from Key Vault.')
-            secrets_keys = ""
 
-            # Right now, there is a bug in Key Vault that gets all keys regardless of the maxresult size of 25. 
-            # Eventually this will have to be changed to use some next_link variable in order to get the next page of keys when that bug is fixed.
+            secrets_keys = ""
             all_secrets = list(client.get_secrets(vault_base_url))
             key_list = []
             for secret in all_secrets:
@@ -164,57 +131,21 @@ class KeyVaultAgent(object):
                 if secrets_keys:
                     secrets_keys += ";"
                 secrets_keys += key
-        else:
-            self._secrets_output_folder = os.path.join(output_folder, "secrets")
-            self._certs_output_folder = os.path.join(output_folder, "certs")
-            self._keys_output_folder = os.path.join(output_folder, "keys")
-            self._cert_keys_output_folder = os.path.join(output_folder, "certs_keys")
-            for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
-                if not os.path.exists(folder):
-                    os.makedirs(folder)
 
-        if secrets_keys is not None:
-            for key_info in filter(None, secrets_keys.split(';')):
-                # Secrets are not renamed. They will have same name
-                # Certs and keys can be renamed
-                key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
-                _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
-                secret = client.get_secret(vault_base_url, key_name, key_version)
+        for key_info in filter(None, secrets_keys.split(';')):
+            key_name, key_version, cert_filename, key_filename = KeyVaultAgent()._split_keyinfo(key_info)
+            _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
+            secret = client.get_secret(vault_base_url, key_name, key_version)
 
-                if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true":
-                    self.create_kubernetes_secret_objects(key_name, secret.value)
-                else:
-                    if secret.kid is not None:
-                        _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                        if secret.content_type == 'application/x-pkcs12':
-                            self._dump_pfx(secret.value, cert_filename, key_filename)
-                        else:
-                            _logger.error('Secret is not in pkcs12 format')
-                            sys.exit(1)
-                    elif (key_name != cert_filename):
-                        _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
-                        sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
+            self.create_kubernetes_secret_objects(key_name, secret.value)
 
-                    # secret has same name as key_name
-                    output_path = os.path.join(self._secrets_output_folder, key_name)
-                    _logger.info('Dumping secret value to: %s', output_path)
-                    with open(output_path, 'w') as secret_file:
-                        secret_file.write(self._dump_secret(secret))
-
-        if certs_keys is not None:
-            for key_info in filter(None, certs_keys.split(';')):
-                # only cert_filename is needed, key_filename is ignored with _
-                key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
-                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
-                cert = client.get_certificate(vault_base_url, key_name, key_version)
-                if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true":
-                    self.create_kubernetes_secret_objects(key_name, secret.value)
-                else:
-                    output_path = os.path.join(self._certs_output_folder, cert_filename)
-                    _logger.info('Dumping cert value to: %s', output_path)
-                    with open(output_path, 'w') as cert_file:
-                        cert_file.write(self._cert_to_pem(cert.cer))
-
+class WriteSecretsToFile(object):
+    def __init__(self):
+        self._secrets_output_folder = None
+        self._certs_output_folder = None
+        self._keys_output_folder = None
+        self._cert_keys_output_folder = None
+        
     def _dump_pfx(self, pfx, cert_filename, key_filename):
         from OpenSSL import crypto
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
@@ -249,6 +180,75 @@ class KeyVaultAgent(object):
         return value
 
     @staticmethod
+    def _cert_to_pem(cert):
+        encoded = base64.encodestring(cert)
+        if isinstance(encoded, bytes):
+            encoded = encoded.decode("utf-8")
+        encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
+
+        return encoded
+
+    def grab_secrets(self, client):
+        vault_base_url = os.getenv('VAULT_BASE_URL')
+        secrets_keys = os.getenv('SECRETS_KEYS')
+        certs_keys = os.getenv('CERTS_KEYS')
+        output_folder = os.getenv('SECRETS_FOLDER')
+
+        self._secrets_output_folder = os.path.join(output_folder, "secrets")
+        self._certs_output_folder = os.path.join(output_folder, "certs")
+        self._keys_output_folder = os.path.join(output_folder, "keys")
+        self._cert_keys_output_folder = os.path.join(output_folder, "certs_keys")
+
+        for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+
+        _logger.info('Using vault: %s', vault_base_url)
+
+        """
+        Gets secrets from KeyVault and stores them in a folder
+        """
+        if secrets_keys is not None:
+            for key_info in filter(None, secrets_keys.split(';')):
+                # Secrets are not renamed. They will have same name
+                # Certs and keys can be renamed
+                key_name, key_version, cert_filename, key_filename = KeyVaultAgent()._split_keyinfo(key_info)
+                _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
+                secret = client.get_secret(vault_base_url, key_name, key_version)
+
+                if secret.kid is not None:
+                    _logger.info('Secret is backing certificate. Dumping private key and certificate.')
+                    if secret.content_type == 'application/x-pkcs12':
+                        self._dump_pfx(secret.value, cert_filename, key_filename)
+                    else:
+                        _logger.error('Secret is not in pkcs12 format')
+                        sys.exit(1)
+                elif (key_name != cert_filename):
+                    _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
+                    sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
+
+                # secret has same name as key_name
+                output_path = os.path.join(self._secrets_output_folder, key_name)
+                _logger.info('Dumping secret value to: %s', output_path)
+                with open(output_path, 'w') as secret_file:
+                    secret_file.write(self._dump_secret(secret))
+
+        if certs_keys is not None:
+            for key_info in filter(None, certs_keys.split(';')):
+                # only cert_filename is needed, key_filename is ignored with _
+                key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
+                _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
+                cert = client.get_certificate(vault_base_url, key_name, key_version)
+                output_path = os.path.join(self._certs_output_folder, cert_filename)
+                _logger.info('Dumping cert value to: %s', output_path)
+                with open(output_path, 'w') as cert_file:
+                    cert_file.write(self._cert_to_pem(cert.cer))
+
+class KeyVaultAgent(object):
+    """
+    A Key Vault agent that reads secrets from Key Vault and stores them in a folder or as Kubernetes Secrets
+    """
+    @staticmethod
     def _split_keyinfo(key_info):
         key_parts = key_info.strip().split(':')
         key_name = key_parts[0]
@@ -261,17 +261,44 @@ class KeyVaultAgent(object):
 
         return key_name, key_version, cert_filename, key_filename
 
-    @staticmethod
-    def _cert_to_pem(cert):
-        encoded = base64.encodestring(cert)
-        if isinstance(encoded, bytes):
-            encoded = encoded.decode("utf-8")
-        encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
+    def _parse_sp_file(self):
+        file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
+        _logger.info('Parsing Service Principle file from: %s', file_path)
+        if not os.path.isfile(file_path):
+            raise Exception("Service Principle file doesn't exist: %s" % file_path)
 
-        return encoded
+        with open(file_path, 'r') as sp_file:
+            sp_data = json.load(sp_file)
+            # retrieve the relevant values used to authenticate with Key Vault
+            self.tenant_id = sp_data['tenantId']
+            self.client_id = sp_data['aadClientId']
+            self.client_secret = sp_data['aadClientSecret']
 
+        _logger.info('Parsing Service Principle file completed')
+
+    def _get_client(self):
+        authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
+        _logger.info('Using authority: %s', authority)
+        context = AuthenticationContext(authority)
+        _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
+        credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
+                                         self.client_id, self.client_secret)
+        return KeyVaultClient(credentials)
+
+    def get_secrets(self):
+        self._parse_sp_file()
+        client = self._get_client()
+
+        create_kubernetes_secrets = os.getenv('CREATE_KUBERNETES_SECRETS')
+        key_vault_agent = None
+        if create_kubernetes_secrets is not None and create_kubernetes_secrets.lower() == "true":
+            key_vault_agent = CreateKubernetesSecrets()
+        else:
+            key_vault_agent = WriteSecretsToFile()
+
+        key_vault_agent.grab_secrets(client)
 
 if __name__ == '__main__':
     _logger.info('Grabbing secrets from Key Vault')
-    KeyVaultAgent().grab_secrets()
+    KeyVaultAgent().get_secrets()
     _logger.info('Done!')
