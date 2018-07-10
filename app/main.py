@@ -85,12 +85,7 @@ class CreateKubernetesSecrets(object):
         key = key.lower()
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
-        encoded_secret = secret.value
-        
-        if secret.tags is not None and 'file-encoding' in secret.tags:
-            encoding = secret.tags['file-encoding']
-            if encoding != 'base64':
-                encoded_secret = base64.b64encode(bytes(value))
+        encoded_secret = base64.b64encode(bytes(value))
 
         secret.metadata = client.V1ObjectMeta(name=key)
         secret.type = "Opaque"

@@ -2,13 +2,16 @@
 An Azure Key Vault agent container that grabs secrets from Azure Key Vault securely and passes them to other containers in its pod, either by shared volume or Kubernetes secrets objects
 
 # How does it work?
-The Azure Key Vault agent container does the following 
+The Azure Key Vault agent container does the following, when writing to shared volume - 
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
 * It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
 * If a secret refers to a key that is backing a certificate, both private key and certificate are exported as pem
 * It terminates and let other containers run
 * Finally, other containers have access to the secrets using a shared volume
+When creating Kubernetes secrets objects - 
+* It connects to Azure Key Vault using the cluster's service principle
+* It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them as Kubernetes secrets objects. These objects are stored unencrypted by default in etcd, and are readable by other pods in the namespace, which is something to keep in mind.
 
 # Advantages
 * Secrets are stored securely in Azure Key Vault
@@ -68,7 +71,7 @@ docker build . -t <image_tag>
 ```
 docker push <image_tag>
 ```
-* Edit `examples/acs-keyvault-cronjob.yaml` file and change the following:
+* Edit `examples/acs-keyvault-cronjob.yaml` or `examples/acs-keyvault-deployment.yaml` file and change the following:
 * If you'd like to get all keys from Key Vault dynamically, make sure to remove the SECRET_KEYS and CERTS_KEYS variables entirely.
   * `<IMAGE_PATH>` - the image you just built earlier.
   * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
