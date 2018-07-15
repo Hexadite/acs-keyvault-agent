@@ -31,8 +31,8 @@ import logging
 import base64
 
 from adal import AuthenticationContext
-from azure.keyvault.key_vault_client import KeyVaultClient
-from msrestazure.azure_active_directory import AdalAuthentication
+from azure.keyvault import KeyVaultClient
+from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentication
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -49,7 +49,6 @@ class KeyVaultAgent(object):
     """
 
     def __init__(self):
-        self._parse_sp_file()
         self._secrets_output_folder = None
         self._certs_output_folder = None
         self._keys_output_folder = None
@@ -71,12 +70,17 @@ class KeyVaultAgent(object):
         _logger.info('Parsing Service Principle file completed')
 
     def _get_client(self):
-        authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
-        _logger.info('Using authority: %s', authority)
-        context = AuthenticationContext(authority)
-        _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
-        credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
-                                         self.client_id, self.client_secret)
+        if os.getenv("USE_MSI", "false").lower() == "true":
+            _logger.info('Using MSI')
+            credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+        else:
+            self._parse_sp_file()
+            authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
+            _logger.info('Using authority: %s', authority)
+            context = AuthenticationContext(authority)
+            _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
+            credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
+                                             self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
 
     def grab_secrets(self):

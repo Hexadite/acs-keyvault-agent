@@ -1,0 +1,44 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-keyvault
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: keyvault
+    spec:
+      containers:
+      - image: alpine:latest
+        name: test-app
+        command: ["/bin/sh", "-c", "--"]
+        args: ["while true; do sleep 5; done;"]
+        volumeMounts:
+        - name: secrets
+          mountPath: /secrets
+          readOnly: true
+
+      initContainers:
+      - name: keyvault-agent
+        image: <IMAGE_PATH>
+        env:
+        - name: USE_MSI
+          value: true
+        - name: VAULT_BASE_URL
+          value: <VAULT_URL>
+        - name: SECRETS_FOLDER
+          value: /secrets
+        - name: SECRETS_KEYS
+          value: <SECRET_KEYS>
+        - name: CERTS_KEYS
+          value: <CERT_KEYS>
+
+        volumeMounts:
+        - name: secrets
+          mountPath: /secrets
+      volumes:
+      - name: secrets
+        emptyDir:
+          # we want the secrets to reside only in-memory
+          medium: Memory
