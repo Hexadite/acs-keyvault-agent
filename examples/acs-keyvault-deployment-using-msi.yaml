@@ -24,7 +24,7 @@ spec:
         image: <IMAGE_PATH>
         env:
         - name: USE_MSI
-          value: true
+          value: "true"
         - name: VAULT_BASE_URL
           value: <VAULT_URL>
         - name: SECRETS_FOLDER
