@@ -1,4 +1,0 @@
-azure-keyvault==0.3.5
-msrestazure==0.4.11
-adal==0.4.6
-pyopenssl==17.5.0
