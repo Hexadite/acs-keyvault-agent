@@ -59,7 +59,7 @@ class CreateKubernetesSecrets(object):
 
         return self._api_instance
 
-    def get_kubernetes_secrets_list(self):
+    def _get_kubernetes_secrets_list(self):
         if self._secrets_list is None:
             api_instance = self._get_kubernetes_api_instance()
             api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
@@ -82,7 +82,7 @@ class CreateKubernetesSecrets(object):
         
         return self._secrets_list
 
-    def create_kubernetes_secret_objects(self, key, value):
+    def _create_kubernetes_secret_objects(self, key, value):
         key = key.lower()
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
@@ -92,7 +92,7 @@ class CreateKubernetesSecrets(object):
         secret.type = "Opaque"
         secret.data = { "secret" : encoded_secret }
 
-        secrets_list = self.get_kubernetes_secrets_list()
+        secrets_list = self._get_kubernetes_secrets_list()
 
         _logger.info('Creating or updating Kubernetes Secret object: %s', key)
         try:
@@ -129,11 +129,11 @@ class CreateKubernetesSecrets(object):
                 secrets_keys += key
 
         for key_info in filter(None, secrets_keys.split(';')):
-            key_name, key_version, cert_filename, key_filename = KeyVaultAgent()._split_keyinfo(key_info)
+            key_name, key_version, cert_filename, key_filename = KeyVaultAgent().split_keyinfo(key_info)
             _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
             secret = client.get_secret(vault_base_url, key_name, key_version)
 
-            self.create_kubernetes_secret_objects(key_name, secret.value)
+            self._create_kubernetes_secret_objects(key_name, secret.value)
 
 class WriteSecretsToFile(object):
     def __init__(self):
@@ -208,7 +208,7 @@ class WriteSecretsToFile(object):
             for key_info in filter(None, secrets_keys.split(';')):
                 # Secrets are not renamed. They will have same name
                 # Certs and keys can be renamed
-                key_name, key_version, cert_filename, key_filename = KeyVaultAgent()._split_keyinfo(key_info)
+                key_name, key_version, cert_filename, key_filename = KeyVaultAgent().split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
 
@@ -232,7 +232,7 @@ class WriteSecretsToFile(object):
         if certs_keys is not None:
             for key_info in filter(None, certs_keys.split(';')):
                 # only cert_filename is needed, key_filename is ignored with _
-                key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
+                key_name, key_version, cert_filename, _ = KeyVaultAgent().split_keyinfo(key_info)
                 _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
                 cert = client.get_certificate(vault_base_url, key_name, key_version)
                 output_path = os.path.join(self._certs_output_folder, cert_filename)
@@ -245,7 +245,7 @@ class KeyVaultAgent(object):
     A Key Vault agent that reads secrets from Key Vault and stores them in a folder or as Kubernetes Secrets
     """
     @staticmethod
-    def _split_keyinfo(key_info):
+    def split_keyinfo(key_info):
         key_parts = key_info.strip().split(':')
         key_name = key_parts[0]
         key_version = '' if len(key_parts) < 2 else key_parts[1]
