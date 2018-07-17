@@ -33,6 +33,8 @@ import base64
 from adal import AuthenticationContext
 from azure.keyvault import KeyVaultClient
 from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentication
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -53,6 +55,9 @@ class KeyVaultAgent(object):
         self._certs_output_folder = None
         self._keys_output_folder = None
         self._cert_keys_output_folder = None
+        self._api_instance = None
+        self._secrets_list = None
+        self._secrets_namespace = None
 
     def _parse_sp_file(self):
         file_path = os.getenv('SERVICE_PRINCIPLE_FILE_PATH')
@@ -82,6 +87,84 @@ class KeyVaultAgent(object):
             credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
                                              self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
+
+    def _get_kubernetes_api_instance(self):
+        if self._api_instance is None:
+            config.load_incluster_config()
+            client.configuration.assert_hostname = False
+            self._api_instance = client.CoreV1Api()
+
+        return self._api_instance
+
+    def _get_kubernetes_secrets_list(self):
+        if self._secrets_list is None:
+            api_instance = self._get_kubernetes_api_instance()
+            api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
+            
+            secret_name_list = []
+            should_continue = True
+
+            while should_continue is True:
+                continue_value = api_response.metadata._continue
+                secrets_list = api_response.items
+                for item in secrets_list:
+                    secret_name_list.append(item.metadata.name)
+
+                if continue_value is not None:
+                    api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace, _continue = continue_value)
+                else:
+                    should_continue = False
+
+            self._secrets_list = secret_name_list
+        
+        return self._secrets_list
+
+    def _create_kubernetes_secret_objects(self, key, value):
+        key = key.lower()
+        api_instance = self._get_kubernetes_api_instance()
+        secret = client.V1Secret()
+        encoded_secret = base64.b64encode(bytes(value))
+
+        secret.metadata = client.V1ObjectMeta(name=key)
+        secret.type = "Opaque"
+        secret.data = { "secret" : encoded_secret }
+
+        secrets_list = self._get_kubernetes_secrets_list()
+
+        _logger.info('Creating or updating Kubernetes Secret object: %s', key)
+        try:
+            if key in secrets_list:
+                api_instance.patch_namespaced_secret(name=key, namespace=self._secrets_namespace, body=secret)
+            else:
+                api_instance.create_namespaced_secret(namespace=self._secrets_namespace, body=secret)
+        except:
+            _logger.exception("Failed to create or update Kubernetes Secret")
+
+    def grab_secrets_kubernetes_objects(self):
+        """
+        Gets secrets from KeyVault and creates them as Kubernetes secrets objects
+        """
+        vault_base_url = os.getenv('VAULT_BASE_URL')
+        secrets_keys = os.getenv('SECRETS_KEYS')
+        self._secrets_namespace = os.getenv('SECRETS_NAMESPACE','default')
+
+        client = self._get_client()
+        _logger.info('Using vault: %s', vault_base_url)
+
+        # Retrieving all secrets from Key Vault if specified by user
+        if secrets_keys is None:
+            _logger.info('Retrieving all secrets from Key Vault.')
+
+            all_secrets = list(client.get_secrets(vault_base_url))
+            secrets_keys = ';'.join([secret.id.split('/')[-1] for secret in all_secrets])
+
+        if secrets_keys is not None:
+            for key_info in filter(None, secrets_keys.split(';')):
+                key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
+                _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
+                secret = client.get_secret(vault_base_url, key_name, key_version)
+                
+                self._create_kubernetes_secret_objects(key_name, secret.value)
 
     def grab_secrets(self):
         """
@@ -197,5 +280,8 @@ class KeyVaultAgent(object):
 
 if __name__ == '__main__':
     _logger.info('Grabbing secrets from Key Vault')
-    KeyVaultAgent().grab_secrets()
+    if os.getenv('CREATE_KUBERNETES_SECRETS','false').lower() == "true":
+        KeyVaultAgent().grab_secrets_kubernetes_objects()
+    else:
+        KeyVaultAgent().grab_secrets()
     _logger.info('Done!')

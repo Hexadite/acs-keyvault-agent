@@ -1,0 +1,34 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: test-keyvault
+spec:
+  schedule: "0 0 * * *" # Will run once a day at midnight
+  concurrencyPolicy: Replace
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - image: <IMAGE_PATH>
+            name: test-app
+            env:
+            - name: VAULT_BASE_URL
+              value: <VAULT_URL>
+            - name: SERVICE_PRINCIPLE_FILE_PATH
+              value: /host/azure.json
+            - name: CREATE_KUBERNETES_SECRETS
+              value: "true"
+            - name: SECRETS_NAMESPACE
+              value: default
+            volumeMounts:
+              - name: host-sp
+                mountPath: /host/azure.json
+                readOnly: true
+          volumes:
+          - name: host-sp
+            hostPath:
+              # this file contains the cluster service-principal, it exists on every node by default
+              path: /etc/kubernetes/azure.json
+              type: File
