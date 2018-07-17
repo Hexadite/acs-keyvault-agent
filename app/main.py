@@ -146,10 +146,7 @@ class KeyVaultAgent(object):
         """
         vault_base_url = os.getenv('VAULT_BASE_URL')
         secrets_keys = os.getenv('SECRETS_KEYS')
-        self._secrets_namespace = os.getenv('SECRETS_NAMESPACE')
-
-        if self._secrets_namespace is None:
-            self._secrets_namespace = "default"
+        self._secrets_namespace = os.getenv('SECRETS_NAMESPACE','default')
 
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
@@ -158,16 +155,8 @@ class KeyVaultAgent(object):
         if secrets_keys is None:
             _logger.info('Retrieving all secrets from Key Vault.')
 
-            secrets_keys = ""
             all_secrets = list(client.get_secrets(vault_base_url))
-            key_list = []
-            for secret in all_secrets:
-                split = secret.id.split('/')
-                key = split[len(split) - 1]
-                key_list.append(key)
-                if secrets_keys:
-                    secrets_keys += ";"
-                secrets_keys += key
+            secrets_keys = ';'.join([secret.id.split('/')[-1] for secret in all_secrets])
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
@@ -291,8 +280,7 @@ class KeyVaultAgent(object):
 
 if __name__ == '__main__':
     _logger.info('Grabbing secrets from Key Vault')
-    create_kubernetes_secrets = os.getenv('CREATE_KUBERNETES_SECRETS')
-    if create_kubernetes_secrets is not None and create_kubernetes_secrets == "true":
+    if os.getenv('CREATE_KUBERNETES_SECRETS','false').lower() == "true":
         KeyVaultAgent().grab_secrets_kubernetes_objects()
     else:
         KeyVaultAgent().grab_secrets()

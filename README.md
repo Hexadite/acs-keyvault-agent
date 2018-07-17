@@ -2,7 +2,7 @@
 An Azure Key Vault agent container that grabs secrets from Azure Key Vault securely and passes them to other containers in its pod, either by shared volume or Kubernetes secrets objects
 
 # How does it work?
-The Azure Key Vault agent container does the following, when writing to shared volume - 
+The Azure Key Vault agent container does the following - 
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
 * It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
@@ -11,7 +11,7 @@ The Azure Key Vault agent container does the following, when writing to shared v
 * Finally, other containers have access to the secrets using a shared volume
 When creating Kubernetes secrets objects - 
 * It connects to Azure Key Vault using the cluster's service principle
-* It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them as Kubernetes secrets objects. These objects are stored unencrypted by default in etcd, and are readable by other pods in the namespace, which is something to keep in mind.
+* It then grabs the desired secrets from Azure Key Vault and stores them as Kubernetes secrets objects. These objects are stored unencrypted by default in etcd, and are readable by other pods in the namespace.
 
 # Advantages
 * Secrets are stored securely in Azure Key Vault
@@ -42,6 +42,7 @@ docker push <image_tag>
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
+  
 
 * Create the deployment using
 ```
@@ -72,15 +73,14 @@ docker build . -t <image_tag>
 docker push <image_tag>
 ```
 * Edit `examples/acs-keyvault-cronjob.yaml` or `examples/acs-keyvault-deployment.yaml` file and change the following:
-* If you'd like to get all keys from Key Vault dynamically, make sure to remove the SECRET_KEYS and CERTS_KEYS variables entirely.
+* If you'd like to get all keys from Key Vault dynamically, make sure to remove the SECRET_KEYS variable entirely.
   * `<IMAGE_PATH>` - the image you just built earlier.
   * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
-  * `<CREATE_KUBERNETES_SECRETS>` - true or false, whether or not you'd like kubernetes secrets objects created.
+  * `<CREATE_KUBERNETES_SECRETS>` - "true" or "false", whether or not you'd like kubernetes secrets objects created.
   * `<SECRETS_NAMESPACE>` - a string value if you want to use a namespace other than default.
   * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
-  * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
 * View secrets
 ```
 kubectl get secrets
