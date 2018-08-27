@@ -186,6 +186,13 @@ class KeyVaultAgent(object):
         client = self._get_client()
         _logger.info('Using vault: %s', vault_base_url)
 
+        # Retrieving all secrets from Key Vault if specified by user
+        if secrets_keys is None:
+            _logger.info('Retrieving all secrets from Key Vault.')
+
+            all_secrets = list(client.get_secrets(vault_base_url))
+            secrets_keys = ';'.join([secret.id.split('/')[-1] for secret in all_secrets])
+
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
                 # Secrets are not renamed. They will have same name
