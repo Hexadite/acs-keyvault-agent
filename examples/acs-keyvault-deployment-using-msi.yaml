@@ -18,7 +18,6 @@ spec:
         - name: secrets
           mountPath: /secrets
           readOnly: true
-
       initContainers:
       - name: keyvault-agent
         image: <IMAGE_PATH>
