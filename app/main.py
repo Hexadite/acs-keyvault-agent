@@ -126,8 +126,11 @@ class KeyVaultAgent(object):
         encoded_secret = base64.b64encode(bytes(value))
 
         secret.metadata = client.V1ObjectMeta(name=key)
-        secret.type = "Opaque"
-        secret.data = { "secret" : encoded_secret }
+        secretTypeEnvKey = key.upper() + "_SECRET_TYPE"
+        secret.type = os.getenv(secretTypeEnvKey, 'Opaque')
+        secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
+        secret_data_key = os.getenv(secretDataKey, 'secret')
+        secret.data = { secret_data_key : encoded_secret }
 
         secrets_list = self._get_kubernetes_secrets_list()
 
