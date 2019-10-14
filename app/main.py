@@ -44,7 +44,6 @@ _logger = logging.getLogger('keyvault-agent')
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
 VAULT_RESOURCE_NAME = os.getenv('VAULT_RESOURCE_NAME', 'https://vault.azure.net')
 
-
 class KeyVaultAgent(object):
     """
     A Key Vault agent that reads secrets from Key Vault and stores them in a folder
