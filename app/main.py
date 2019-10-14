@@ -35,6 +35,7 @@ from azure.keyvault import KeyVaultClient
 from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentication
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from OpenSSL import crypto
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -118,18 +119,24 @@ class KeyVaultAgent(object):
         
         return self._secrets_list
 
-    def _create_kubernetes_secret_objects(self, key, value):
+    def _create_kubernetes_secret_objects(self, key, secret_value, secret_type):
         key = key.lower()
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
-        encoded_secret = base64.b64encode(bytes(value))
 
         secret.metadata = client.V1ObjectMeta(name=key)
-        secretTypeEnvKey = key.upper() + "_SECRET_TYPE"
-        secret.type = os.getenv(secretTypeEnvKey, 'Opaque')
-        secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
-        secret_data_key = os.getenv(secretDataKey, 'secret')
-        secret.data = { secret_data_key : encoded_secret }
+        secret.type = secret_type
+
+        if secret.type == 'kubernetes.io/tls':
+            _logger.info('Extracting private key and certificate.')
+            p12 = crypto.load_pkcs12(base64.decodestring(secret_value))
+            privateKey = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
+            cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
+            secret.data = { 'tls.crt' : base64.encodestring(cert), 'tls.key' : base64.encodestring(privateKey) }
+        else:
+            secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
+            secret_data_key = os.getenv(secretDataKey, 'secret')
+            secret.data = { secret_data_key : base64.b64encode(bytes(secret_value)) }            
 
         secrets_list = self._get_kubernetes_secrets_list()
 
@@ -165,8 +172,22 @@ class KeyVaultAgent(object):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-                
-                self._create_kubernetes_secret_objects(key_name, secret.value)
+
+                secretTypeEnvKey = key_name.upper() + "_SECRET_TYPE"
+                secret_type = os.getenv(secretTypeEnvKey, os.getenv("SECRETS_TYPE", 'Opaque'))
+                if secret_type == 'kubernetes.io/tls':
+                    if secret.kid is not None:
+                        _logger.info('Secret is backing certificate.')
+                        if secret.content_type == 'application/x-pkcs12':
+                            self._create_kubernetes_secret_objects(key_name, secret.value, secret_type)
+                        else:
+                            _logger.error('Secret is not in pkcs12 format')
+                            sys.exit(1)
+                    elif (key_name != cert_filename):
+                        _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
+                        sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
+                else:
+                    self._create_kubernetes_secret_objects(key_name, secret.value, secret_type)
 
     def grab_secrets(self):
         """
@@ -232,7 +253,6 @@ class KeyVaultAgent(object):
                     cert_file.write(self._cert_to_pem(cert.cer))
 
     def _dump_pfx(self, pfx, cert_filename, key_filename):
-        from OpenSSL import crypto
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
         certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
