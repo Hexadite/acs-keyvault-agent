@@ -78,9 +78,10 @@ docker push <image_tag>
   * `<VAULT_URL>` - should be something like: `https://<NAME>.vault.azure.net`.
   * `<CREATE_KUBERNETES_SECRETS>` - "true" or "false", whether or not you'd like kubernetes secrets objects created.
   * `<SECRETS_NAMESPACE>` - a string value if you want to use a namespace other than default.
-  * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
+  * `<SECRETS_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
+  * `DOWNLOAD_CA_CERTIFICATES` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controlls this behavior.
   * if you like to create secrets of a perticular kind (for example for use in DaemonSets), create an environment variable with the name of the secret that you are creating in uppercase appended by `_SECRET_TYPE`. For example, if the key name in keyvault is `mysecret` then to create a secret of type `MyCustomType`, set the environment variable `MYSECRET_SECRET_TYPE` to `MyCustomType`. This will be applicable only for that secret name.
   * if you'd like to install secrets with key value other than the default `secret`, then you can do that by creating an environment variable with name `_SECRETS_DATA_KEY`. For example if you have a secret called `DBConnectionString` and if you would like to install a secret with key as `connectionString` and value to be the base64 encoded connection string, then create a environment variable `DBCONNECTIONSTRING_SECRETS_DATA_KEY` and set its value to `connectionString`
 * View secrets
