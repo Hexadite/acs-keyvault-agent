@@ -255,7 +255,10 @@ class KeyVaultAgent(object):
     def _dump_pfx(self, pfx, cert_filename, key_filename):
         p12 = crypto.load_pkcs12(base64.decodestring(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-        certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
+        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
+            certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
+        else:     
+            certs = (p12.get_certificate(),)
 
         if (cert_filename == key_filename):
             key_path = os.path.join(self._keys_output_folder, key_filename)
