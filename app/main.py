@@ -29,6 +29,8 @@ import os
 import json
 import logging
 import base64
+import requests
+import re
 
 from adal import AuthenticationContext
 from azure.keyvault import KeyVaultClient
@@ -36,6 +38,7 @@ from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentica
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from OpenSSL import crypto
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -68,7 +71,7 @@ class KeyVaultAgent(object):
         with open(file_path, 'r') as sp_file:
             sp_data = json.load(sp_file)
             # retrieve the relevant values used to authenticate with Key Vault
-            self.tenant_id = sp_data['tenantId']
+            self.tenant_id = self._get_tenant_id()
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
 
@@ -87,6 +90,29 @@ class KeyVaultAgent(object):
             credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
                                              self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
+
+    def _get_tenant_id(self):
+        vault_base_url = os.getenv('VAULT_BASE_URL')
+        _logger.info('Detecting tenant id for %s', vault_base_url)
+        # Some key to trigger a 401
+        URL = '{}/keys/somekeyname/1?api-version=2018-02-14'.format(vault_base_url)
+        _logger.info('Sending challenge request to %s', URL)
+        response = requests.get(url = URL)
+        if response.status_code == 401:
+            # If status code == HTTP 401, then parse the WWW-Authenticate header
+            # Bearer authorization="https://login.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47", resource=".."
+            # Get the value of authorization and populate in self.tenant_id
+            # if conditions not met return the default tenant_id from cloud config file
+            challenge = response.headers['WWW-authenticate'].lower().replace('bearer ', '').split(',')
+            for kvp in challenge:
+                keyvalue = kvp.strip().split('=')
+                if len(keyvalue) == 2 and keyvalue[0] == 'authorization':
+                    authority = keyvalue[1].replace('"', '')
+                    tenant_id = urlparse(authority).path.replace('/', '')
+                    _logger.info('Tenant in config : %s, Tenant detected : %s. Using %s', self.tenant_id, tenant_id, tenant_id)
+                    self.tenant_id = tenant_id
+                    break
+        return self.tenant_id
 
     def _get_kubernetes_api_instance(self):
         if self._api_instance is None:
