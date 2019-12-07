@@ -71,7 +71,7 @@ class KeyVaultAgent(object):
         with open(file_path, 'r') as sp_file:
             sp_data = json.load(sp_file)
             # retrieve the relevant values used to authenticate with Key Vault
-            self.tenant_id = self._get_tenant_id()
+            self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
 
@@ -91,14 +91,13 @@ class KeyVaultAgent(object):
                                              self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
 
-    def _get_tenant_id(self):
-        tenant_id_from_config = self.tenant_id
+    def _get_tenant_id(self, tenant_id_from_config):
         if os.getenv('AUTO_DETECT_AAD_TENANT').lower() != 'true':
-            # AAD tenant auto detection turned off
+            _logger.info('AAD tenant auto detection turned off. Using tenant id %s from cloud config', vault_base_url)
             return tenant_id_from_config
         else:
             vault_base_url = os.getenv('VAULT_BASE_URL')
-            _logger.info('Detecting tenant id for %s', vault_base_url)
+            _logger.info('AAD tenant auto detection turned on. Detecting tenant id for %s', vault_base_url)
             # Some key to trigger a 401
             URL = '{}/keys/somekeyname/1?api-version=2018-02-14'.format(vault_base_url)
             _logger.info('Sending challenge request to %s', URL)
@@ -107,8 +106,10 @@ class KeyVaultAgent(object):
                 # If status code == HTTP 401, then parse the WWW-Authenticate header
                 # Bearer authorization="https://login.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47", resource=".."
                 # Parse the value of authorization from the challenge
-                challenge = response.headers['WWW-authenticate'].lower().replace('bearer ', '').split(',')
-                for kvp in challenge:
+                challenge = response.headers['WWW-authenticate'].lower()
+                _logger.info('Received challenge %s', challenge)
+                challenge_data = .replace('bearer ', '').split(',')
+                for kvp in challenge_data:
                     keyvalue = kvp.strip().split('=')
                     if len(keyvalue) == 2 and keyvalue[0] == 'authorization':
                         authority = keyvalue[1].replace('"', '')
@@ -118,7 +119,7 @@ class KeyVaultAgent(object):
                         break
             else:
                 # if conditions are not met return the default tenant_id_from_config from cloud config file
-                _logger.info('Unable to dynamically retrieve the tenant id. Received status code %d. Expected status code : 401', response.status_code)
+                _logger.info('Unable to detect the AAD tenant id. Received status code %d. Expected status code : 401. Using the config default %s', response.status_code, tenant_id_from_config)
         return tenant_id_from_config
 
     def _get_kubernetes_api_instance(self):
