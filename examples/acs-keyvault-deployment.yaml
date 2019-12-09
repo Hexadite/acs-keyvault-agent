@@ -52,6 +52,9 @@ spec:
           # End Example 3          
         - name: CERTS_KEYS
           value: <CERT_KEYS>
+          # Set this to true if AAD tenant should be auto detected
+        - name: AUTO_DETECT_AAD_TENANT
+          value: "false"
 
         volumeMounts:
         - name: secrets
