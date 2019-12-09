@@ -118,9 +118,9 @@ class KeyVaultAgent(object):
                 
                 # if we cannot find in the for loop default the value and log
                 _logger.error('Unable to find the tenant id from the received challenge [%s]. Using tenant id from config', challenge)
-            else:
-                # if conditions are not met return the default tenant_id_from_config from cloud config file
-                _logger.info('Unable to receive a challenge to auto detect AAD tenant. Received status code %d. Expected status code : 401. Using the config default %s', response.status_code, tenant_id_from_config)
+                
+            # if conditions are not met return the default tenant_id_from_config from cloud config file
+            _logger.info('Unable to receive a challenge to auto detect AAD tenant. Received status code %d. Expected status code : 401. Using the config default %s', response.status_code, tenant_id_from_config)
         except:
             _logger.error('Exception occured while trying to auto detect AAD tenant. Using the config default %s', tenant_id_from_config)
         return tenant_id_from_config
