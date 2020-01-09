@@ -42,6 +42,8 @@ spec:
           # end scenario 2
         - name: CERTS_KEYS
           value: <CERT_KEYS>
+        - name: AUTO_DETECT_AAD_TENANT
+          value: "false"
 
         volumeMounts:
         - name: secrets

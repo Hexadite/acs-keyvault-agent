@@ -22,6 +22,8 @@ spec:
               value: "true"
             - name: SECRETS_NAMESPACE
               value: default
+            - name: AUTO_DETECT_AAD_TENANT
+              value: "false"
             volumeMounts:
               - name: host-sp
                 mountPath: /host/azure.json

@@ -29,6 +29,7 @@ import os
 import json
 import logging
 import base64
+import requests
 
 from adal import AuthenticationContext
 from azure.keyvault import KeyVaultClient
@@ -36,6 +37,7 @@ from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentica
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from OpenSSL import crypto
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -68,7 +70,7 @@ class KeyVaultAgent(object):
         with open(file_path, 'r') as sp_file:
             sp_data = json.load(sp_file)
             # retrieve the relevant values used to authenticate with Key Vault
-            self.tenant_id = sp_data['tenantId']
+            self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
 
@@ -87,6 +89,41 @@ class KeyVaultAgent(object):
             credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
                                              self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
+
+    def _get_tenant_id(self, tenant_id_from_config):
+        if os.getenv('AUTO_DETECT_AAD_TENANT', 'false').lower() != 'true':
+            _logger.info('AAD tenant auto detection turned off. Using tenant id %s from cloud config', tenant_id_from_config)
+            return tenant_id_from_config
+        
+        # if we are unable to auto detect tenant id for any reason, we will use the one from config
+        try:
+            vault_base_url = os.getenv('VAULT_BASE_URL')
+            _logger.info('AAD tenant auto detection turned on. Detecting tenant id for %s', vault_base_url)
+            # Send request pointing to any key to trigger a 401
+            URL = '{}/keys/somekeyname/1?api-version=2018-02-14'.format(vault_base_url)
+            _logger.info('Sending challenge request to %s', URL)
+            response = requests.get(url = URL)
+            if response.status_code == 401:
+                # If status code == HTTP 401, then parse the WWW-Authenticate header to retrieve 'authorization' value
+                # Bearer authorization="https://login.windows.net/72f988bf-86f1-41af-91ab-2d7cd011db47", resource=".."
+                challenge = response.headers['WWW-authenticate'].lower()
+                challenge_data = challenge.replace('bearer ', '').split(',')
+                for kvp in challenge_data:
+                    keyvalue = kvp.strip().split('=')
+                    if len(keyvalue) == 2 and keyvalue[0] == 'authorization':
+                        authority = keyvalue[1].replace('"', '')
+                        tenant_id = urlparse(authority).path.replace('/', '')
+                        _logger.info('Successfully auto detected tenant id : %s', tenant_id)
+                        return tenant_id
+                
+                # if we cannot find in the for loop default the value and log
+                _logger.error('Unable to find the tenant id from the received challenge [%s]. Using tenant id from config', challenge)
+                
+            # if conditions are not met return the default tenant_id_from_config from cloud config file
+            _logger.info('Unable to receive a challenge to auto detect AAD tenant. Received status code %d. Expected status code : 401. Using the config default %s', response.status_code, tenant_id_from_config)
+        except:
+            _logger.error('Exception occured while trying to auto detect AAD tenant. Using the config default %s', tenant_id_from_config)
+        return tenant_id_from_config
 
     def _get_kubernetes_api_instance(self):
         if self._api_instance is None:
