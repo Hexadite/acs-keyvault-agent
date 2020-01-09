@@ -91,7 +91,7 @@ class KeyVaultAgent(object):
         return KeyVaultClient(credentials)
 
     def _get_tenant_id(self, tenant_id_from_config):
-        if os.getenv('AUTO_DETECT_AAD_TENANT').lower() != 'true':
+        if os.getenv('AUTO_DETECT_AAD_TENANT', 'false').lower() != 'true':
             _logger.info('AAD tenant auto detection turned off. Using tenant id %s from cloud config', tenant_id_from_config)
             return tenant_id_from_config
         
