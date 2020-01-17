@@ -37,7 +37,6 @@ from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentica
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from OpenSSL import crypto
-from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -112,6 +111,11 @@ class KeyVaultAgent(object):
                     keyvalue = kvp.strip().split('=')
                     if len(keyvalue) == 2 and keyvalue[0] == 'authorization':
                         authority = keyvalue[1].replace('"', '')
+                        try:
+                            # This API is available only in Python 3
+                            from urllib.parse import urlparse
+                        except ImportError:
+                            from urlparse import urlparse
                         tenant_id = urlparse(authority).path.replace('/', '')
                         _logger.info('Successfully auto detected tenant id : %s', tenant_id)
                         return tenant_id
