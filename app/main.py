@@ -171,9 +171,15 @@ class KeyVaultAgent(object):
         if secret.type == 'kubernetes.io/tls':
             _logger.info('Extracting private key and certificate.')
             p12 = crypto.load_pkcs12(base64.decodestring(secret_value))
+            if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
+                certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
+            else:     
+                certs = (p12.get_certificate(),)
             privateKey = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-            cert = crypto.dump_certificate(crypto.FILETYPE_PEM, p12.get_certificate())
-            secret.data = { 'tls.crt' : base64.encodestring(cert), 'tls.key' : base64.encodestring(privateKey) }
+            certString = ""
+            for cert in certs:
+                certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
+            secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(privateKey) }
         else:
             secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
             secret_data_key = os.getenv(secretDataKey, 'secret')
