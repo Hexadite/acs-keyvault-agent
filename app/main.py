@@ -183,10 +183,10 @@ class KeyVaultAgent(object):
                 certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
             secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(privateKey) }
             if ca_certs:
-                ca_certsString = ""
+                ca_certs_string = ""
                 for cert in ca_certs:
-                    ca_certsString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-                secret.data.update({'ca.crt': base64.encodestring(ca_certsString)})
+                    ca_certs_string += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
+                secret.data.update({'ca.crt': base64.encodestring(ca_certs_string)})
 
         else:
             secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
