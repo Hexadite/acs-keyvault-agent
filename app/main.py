@@ -160,7 +160,7 @@ class KeyVaultAgent(object):
         
         return self._secrets_list
 
-    def _create_kubernetes_secret_objects(self, key, secret_value, secret_type):
+    def _create_kubernetes_secret_objects(self, key, secret_value, secret_type, content_type):
         key = key.lower()
         api_instance = self._get_kubernetes_api_instance()
         secret = client.V1Secret()
@@ -170,18 +170,12 @@ class KeyVaultAgent(object):
 
         if secret.type == 'kubernetes.io/tls':
             _logger.info('Extracting private key and certificate.')
-            p12 = crypto.load_pkcs12(base64.decodestring(secret_value))
-            ca_certs = ()
-            if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
-                ca_certs = (p12.get_ca_certificates() or ())
-                certs = (p12.get_certificate(),) + ca_certs
-            else:     
-                certs = (p12.get_certificate(),)
-            privateKey = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
+            (certs, pk, ca_certs) = self._load_cert(secret_value, content_type)
+
             certString = ""
             for cert in certs:
                 certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-            secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(privateKey) }
+            secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(pk) }
             if ca_certs:
                 ca_certs_string = ""
                 for cert in ca_certs:
@@ -232,11 +226,11 @@ class KeyVaultAgent(object):
                 secret_type = os.getenv(secretTypeEnvKey, os.getenv("SECRETS_TYPE", 'Opaque'))
                 if secret_type == 'kubernetes.io/tls':
                     if secret.kid is not None:
-                        _logger.info('Secret is backing certificate.')
-                        if secret.content_type == 'application/x-pkcs12':
-                            self._create_kubernetes_secret_objects(key_name, secret.value, secret_type)
+                        _logger.info('Secret is backing certificate. secret content_type: %s', secret.content_type)
+                        if secret.content_type == 'application/x-pkcs12' or secret.content_type == 'application/x-pem-file':
+                            self._create_kubernetes_secret_objects(key_name, secret.value, secret_type, secret.content_type)
                         else:
-                            _logger.error('Secret is not in pkcs12 format')
+                            _logger.error('Secret is not in pkcs12 or pem format.  content_type: %s', secret.content_type)
                             sys.exit(1)
                     elif (key_name != cert_filename):
                         _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
@@ -280,11 +274,11 @@ class KeyVaultAgent(object):
                 secret = client.get_secret(vault_base_url, key_name, key_version)
                 
                 if secret.kid is not None:
-                    _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                    if secret.content_type == 'application/x-pkcs12':
-                        self._dump_pfx(secret.value, cert_filename, key_filename)
+                    _logger.info('Secret is backing certificate. Dumping private key and certificate.  content_type: %s', secret.content_type)
+                    if secret.content_type == 'application/x-pkcs12' or secret.content_type == 'application/x-pem-file':
+                        self._dump_cert(secret.value, cert_filename, key_filename, secret.content_type)
                     else:
-                        _logger.error('Secret is not in pkcs12 format')
+                        _logger.error('Secret is not in pkcs12 or pem format.  content_type: %s', secret.content_type)
                         sys.exit(1)
                 elif (key_name != cert_filename):
                     _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
@@ -306,14 +300,30 @@ class KeyVaultAgent(object):
                 _logger.info('Dumping cert value to: %s', output_path)
                 with open(output_path, 'w') as cert_file:
                     cert_file.write(self._cert_to_pem(cert.cer))
+    
+    def _load_cert(self, secret_value, content_type):
+        if (content_type == 'application/x-pkcs12'):
+            pkcs12 = crypto.load_pkcs12(base64.decodestring(secret_value))
+            x509 = pkcs12.get_certificate()
+            key = pkcs12.get_privatekey()
+        elif (content_type == 'application/x-pem-file'):
+            x509 = crypto.load_certificate(crypto.FILETYPE_PEM, secret_value.encode('utf-8'))
+            # extract the private key portion of PEM
+            key = crypto.load_privatekey(crypto.FILETYPE_PEM, secret_value.encode('utf-8'))
+            pkcs12 = None
+        
+        pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, key)
+        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true" and pkcs12 is not None:
+            ca_certs = (pkcs12.get_ca_certificates() or ())
+            certs = (x509,) + ca_certs
+        else:
+            ca_certs = ()
+            certs = (x509,)
 
-    def _dump_pfx(self, pfx, cert_filename, key_filename):
-        p12 = crypto.load_pkcs12(base64.decodestring(pfx))
-        pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
-            certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
-        else:     
-            certs = (p12.get_certificate(),)
+        return (certs, pk, ca_certs)
+
+    def _dump_cert(self, secret_value, cert_filename, key_filename, content_type):
+        (certs, pk, _) = self._load_cert(secret_value, content_type)
 
         if (cert_filename == key_filename):
             key_path = os.path.join(self._keys_output_folder, key_filename)
@@ -331,6 +341,7 @@ class KeyVaultAgent(object):
         with open(cert_path, 'w') as cert_file:
             for cert in certs:
                 cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+
 
     @staticmethod
     def _dump_secret(secret):
