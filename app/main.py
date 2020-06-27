@@ -176,7 +176,7 @@ class KeyVaultAgent(object):
             for cert in certs:
                 certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
             secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(pk) }
-            if ca_certs:
+            if ca_certs != ():
                 ca_certs_string = ""
                 for cert in ca_certs:
                     ca_certs_string += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
@@ -236,7 +236,7 @@ class KeyVaultAgent(object):
                         _logger.error('Cert filename provided for secret %s not backing a certificate.', key_name)
                         sys.exit(('Error: Cert filename provided for secret {0} not backing a certificate.').format(key_name))
                 else:
-                    self._create_kubernetes_secret_objects(key_name, secret.value, secret_type)
+                    self._create_kubernetes_secret_objects(key_name, secret.value, secret_type, secret.content_type)
 
     def grab_secrets(self):
         """
@@ -250,8 +250,9 @@ class KeyVaultAgent(object):
         self._certs_output_folder = os.path.join(output_folder, "certs")
         self._keys_output_folder = os.path.join(output_folder, "keys")
         self._cert_keys_output_folder = os.path.join(output_folder, "certs_keys")
+        self._certs_ca_output_folder = os.path.join(output_folder, "certs_ca")
 
-        for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder):
+        for folder in (self._secrets_output_folder, self._certs_output_folder, self._keys_output_folder, self._cert_keys_output_folder, self._certs_ca_output_folder):
             if not os.path.exists(folder):
                 os.makedirs(folder)
 
@@ -302,28 +303,34 @@ class KeyVaultAgent(object):
                     cert_file.write(self._cert_to_pem(cert.cer))
     
     def _load_cert(self, secret_value, content_type):
+        x509 = ()
         if (content_type == 'application/x-pkcs12'):
             pkcs12 = crypto.load_pkcs12(base64.decodestring(secret_value))
-            x509 = pkcs12.get_certificate()
+            ca_certs = (pkcs12.get_ca_certificates() or ())
+            cert = pkcs12.get_certificate()
+            x509 += (cert,) + ca_certs
             key = pkcs12.get_privatekey()
         elif (content_type == 'application/x-pem-file'):
-            x509 = crypto.load_certificate(crypto.FILETYPE_PEM, secret_value.encode('utf-8'))
+            start_line = b'-----BEGIN CERTIFICATE-----'
+            cert_slots = secret_value.split(start_line)
+            for single_pem_cert in cert_slots[1:]:
+                cert = crypto.load_certificate(crypto.FILETYPE_PEM, start_line+single_pem_cert)
+                x509 += (cert,)
             # extract the private key portion of PEM
-            key = crypto.load_privatekey(crypto.FILETYPE_PEM, secret_value.encode('utf-8'))
-            pkcs12 = None
+            key = crypto.load_privatekey(crypto.FILETYPE_PEM, cert_slots[0])
+            ca_certs = (x509[1:] or ())
         
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, key)
-        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true" and pkcs12 is not None:
-            ca_certs = (pkcs12.get_ca_certificates() or ())
-            certs = (x509,) + ca_certs
+        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
+            certs = x509
         else:
+            certs = (x509[0],)
             ca_certs = ()
-            certs = (x509,)
 
         return (certs, pk, ca_certs)
 
     def _dump_cert(self, secret_value, cert_filename, key_filename, content_type):
-        (certs, pk, _) = self._load_cert(secret_value, content_type)
+        (certs, pk, ca_certs) = self._load_cert(secret_value, content_type)
 
         if (cert_filename == key_filename):
             key_path = os.path.join(self._keys_output_folder, key_filename)
@@ -341,6 +348,17 @@ class KeyVaultAgent(object):
         with open(cert_path, 'w') as cert_file:
             for cert in certs:
                 cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+        
+        if ca_certs != (): 
+            folder = os.path.join(self._certs_ca_output_folder, cert_filename)
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            ca_path = os.path.join(folder, 'ca.pem')
+            _logger.info('Dumping CA Certs to: %s', ca_path)
+            with open(ca_path, 'w') as ca_file:
+                for cert in ca_certs:
+                    ca_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+
 
 
     @staticmethod

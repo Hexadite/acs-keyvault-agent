@@ -6,7 +6,7 @@ The Azure Key Vault agent container does the following -
 * It runs before any other container as an init-container
 * It connects to Azure Key Vault using the cluster's service principle
 * It then grabs the desired secrets and/or certificates from Azure Key Vault and stores them in a shared volume (memory only - tmpfs)
-* If a secret refers to a key that is backing a certificate, both private key and certificate are exported as pem
+* If a secret refers to a key that is backing a certificate, both private key, certificate (and optionally CA chain) are exported as pem
 * It terminates and let other containers run
 * Finally, other containers have access to the secrets using a shared volume
 When creating Kubernetes secrets objects - 
@@ -41,7 +41,7 @@ docker push <image_tag>
   * `<SECRET_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
-  * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controls this behavior.
+  * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded in PEM format at `ca_certs/<certificate_name>/ca.pem`. Setting the environment variable to `true` or `false` controls this behavior.
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format. 
   
 
@@ -58,6 +58,7 @@ and now just view the secrets with
 cat /secrets/secrets/<secret_name>
 cat /secrets/certs/<certificate_name>
 cat /secrets/keys/<key_name>
+cat /secrets/certs_ca/<certificate_name>
 ```
 
 # How to use it - Kubernetes Secrets
@@ -82,7 +83,7 @@ docker push <image_tag>
   * `<SECRETS_KEYS>` - a list of keys and their versions (optional), represented as a string, formatted like: `<secret_name>:<secret_version>;<another_secret>`. If a secret is backing a certificate, private key and certificate will be downloaded in PEM format at `keys/` and `certs/` respectively. 
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
-  * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controls this behavior.
+  * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded in PEM format at `ca_certs/<certificate_name>/ca.pem`. Setting the environment variable to `true` or `false` controls this behavior.
   * `<VAULT_BASE_URL>` - A string value that is the base url of the keyvault. It should look something like this: `https://<NAME>.vault.azure.net`.
   * `<SECRETS_TYPE>` - a string value that determines the type of secret created. For example, 'kubernetes.io/tls', 'Opaque' etc. Default is 'Opaque'.
   * If you like to create secrets of a particular kind (for example for use in DaemonSets), create an environment variable with the name of the secret that you are creating in uppercase appended by `_SECRET_TYPE`. For example, if the key name in keyvault is `mysecret` then to create a secret of type `MyCustomType`, set the environment variable `MYSECRET_SECRET_TYPE` to `MyCustomType`. This will be applicable only for that secret name, and overrides any value set for '<SECRETS_TYPE>' key. Default is 'Opaque'.
