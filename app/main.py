@@ -317,7 +317,7 @@ class KeyVaultAgent(object):
                 cert = crypto.load_certificate(crypto.FILETYPE_PEM, start_line+single_pem_cert)
                 x509 += (cert,)
             # extract the private key portion of PEM
-            key = crypto.load_privatekey(crypto.FILETYPE_PEM, cert_slots[0])
+            key = crypto.load_privatekey(crypto.FILETYPE_PEM, secret_value.encode('utf-8'))
             ca_certs = (x509[1:] or ())
         
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, key)
@@ -349,7 +349,7 @@ class KeyVaultAgent(object):
             for cert in certs:
                 cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
         
-        if ca_certs != (): 
+        if ca_certs: 
             folder = os.path.join(self._certs_ca_output_folder, cert_filename)
             if not os.path.exists(folder):
                 os.makedirs(folder)
