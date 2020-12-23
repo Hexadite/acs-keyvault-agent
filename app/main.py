@@ -78,7 +78,20 @@ class KeyVaultAgent(object):
     def _get_client(self):
         if os.getenv("USE_MSI", "false").lower() == "true":
             _logger.info('Using MSI')
-            credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+            if "MSI_CLIENT_ID" in os.environ:
+                msi_client_id = os.environ["MSI_CLIENT_ID"]
+                _logger.info('Using client_id: %s', msi_client_id)
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
+            elif "MSI_OBJECT_ID" in os.environ:
+                msi_object_id = os.environ["MSI_OBJECT_ID"]
+                _logger.info('Using object_id: %s', msi_object_id)
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, object_id=msi_object_id)
+            elif "MSI_RESOURCE_ID" in os.environ:
+                msi_resource_id = os.environ["MSI_RESOURCE_ID"]
+                _logger.info('Using resource_id: %s', msi_resource_id)
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, msi_res_id=msi_resource_id)
+            else:
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
         else:
             self._parse_sp_file()
             authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
