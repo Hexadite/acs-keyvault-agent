@@ -106,7 +106,7 @@ class KeyVaultAgent(object):
         if os.getenv('AUTO_DETECT_AAD_TENANT', 'false').lower() != 'true':
             _logger.info('AAD tenant auto detection turned off. Using tenant id %s from cloud config', tenant_id_from_config)
             return tenant_id_from_config
-        
+
         # if we are unable to auto detect tenant id for any reason, we will use the one from config
         try:
             vault_base_url = os.getenv('VAULT_BASE_URL')
@@ -132,10 +132,10 @@ class KeyVaultAgent(object):
                         tenant_id = urlparse(authority).path.replace('/', '')
                         _logger.info('Successfully auto detected tenant id : %s', tenant_id)
                         return tenant_id
-                
+
                 # if we cannot find in the for loop default the value and log
                 _logger.error('Unable to find the tenant id from the received challenge [%s]. Using tenant id from config', challenge)
-                
+
             # if conditions are not met return the default tenant_id_from_config from cloud config file
             _logger.info('Unable to receive a challenge to auto detect AAD tenant. Received status code %d. Expected status code : 401. Using the config default %s', response.status_code, tenant_id_from_config)
         except:
@@ -154,7 +154,7 @@ class KeyVaultAgent(object):
         if self._secrets_list is None:
             api_instance = self._get_kubernetes_api_instance()
             api_response = api_instance.list_namespaced_secret(namespace=self._secrets_namespace)
-            
+
             secret_name_list = []
             should_continue = True
 
@@ -170,7 +170,7 @@ class KeyVaultAgent(object):
                     should_continue = False
 
             self._secrets_list = secret_name_list
-        
+
         return self._secrets_list
 
     def _create_kubernetes_secret_objects(self, key, secret_value, secret_type):
@@ -183,28 +183,28 @@ class KeyVaultAgent(object):
 
         if secret.type == 'kubernetes.io/tls':
             _logger.info('Extracting private key and certificate.')
-            p12 = crypto.load_pkcs12(base64.decodestring(secret_value))
+            p12 = crypto.load_pkcs12(base64.b64decode(secret_value))
             ca_certs = ()
             if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
                 ca_certs = (p12.get_ca_certificates() or ())
                 certs = (p12.get_certificate(),) + ca_certs
-            else:     
+            else:
                 certs = (p12.get_certificate(),)
             privateKey = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
             certString = ""
             for cert in certs:
-                certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-            secret.data = { 'tls.crt' : base64.encodestring(certString), 'tls.key' : base64.encodestring(privateKey) }
+                certString += crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode()
+            secret.data = { 'tls.crt' : base64.b64encode(certString.encode()).decode(), 'tls.key' : base64.b64encode(privateKey).decode() }
             if ca_certs:
                 ca_certs_string = ""
                 for cert in ca_certs:
-                    ca_certs_string += crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-                secret.data.update({'ca.crt': base64.encodestring(ca_certs_string)})
+                    ca_certs_string += crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode()
+                secret.data.update({'ca.crt': base64.b64encode(ca_certs_string.encode()).decode()})
 
         else:
             secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
             secret_data_key = os.getenv(secretDataKey, 'secret')
-            secret.data = { secret_data_key : base64.b64encode(bytes(secret_value)) }            
+            secret.data = { secret_data_key : base64.b64encode(bytes(secret_value)).decode() }
 
         secrets_list = self._get_kubernetes_secrets_list()
 
@@ -291,7 +291,7 @@ class KeyVaultAgent(object):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
                 secret = client.get_secret(vault_base_url, key_name, key_version)
-                
+
                 if secret.kid is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
                     if secret.content_type == 'application/x-pkcs12':
@@ -321,11 +321,11 @@ class KeyVaultAgent(object):
                     cert_file.write(self._cert_to_pem(cert.cer))
 
     def _dump_pfx(self, pfx, cert_filename, key_filename):
-        p12 = crypto.load_pkcs12(base64.decodestring(pfx))
+        p12 = crypto.load_pkcs12(base64.b64decode(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
         if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
             certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
-        else:     
+        else:
             certs = (p12.get_certificate(),)
 
         if (cert_filename == key_filename):
@@ -338,12 +338,12 @@ class KeyVaultAgent(object):
 
         _logger.info('Dumping key value to: %s', key_path)
         with open(key_path, 'w') as key_file:
-            key_file.write(pk)
+            key_file.write(pk.decode())
 
         _logger.info('Dumping certs to: %s', cert_path)
         with open(cert_path, 'w') as cert_file:
             for cert in certs:
-                cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+                cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode())
 
     @staticmethod
     def _dump_secret(secret):
@@ -351,7 +351,7 @@ class KeyVaultAgent(object):
         if secret.tags is not None and 'file-encoding' in secret.tags:
             encoding = secret.tags['file-encoding']
             if encoding == 'base64':
-                value = base64.decodestring(value)
+                value = base64.b64decode(value)
 
         return value
 
