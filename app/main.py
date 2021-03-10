@@ -204,7 +204,7 @@ class KeyVaultAgent(object):
         else:
             secretDataKey = key.upper() + "_SECRETS_DATA_KEY"
             secret_data_key = os.getenv(secretDataKey, 'secret')
-            secret.data = { secret_data_key : base64.b64encode(bytes(secret_value)).decode() }
+            secret.data = { secret_data_key : base64.b64encode(secret_value.encode()).decode() }
 
         secrets_list = self._get_kubernetes_secrets_list()
 
