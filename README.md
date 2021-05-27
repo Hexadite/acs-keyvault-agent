@@ -91,6 +91,10 @@ docker push <image_tag>
   * `<MSI_CLIENT_ID>` - This will use a specific client_id when authenticating with MSI. This is useful if you are using user-assigned identities.
   * `<MSI_OBJECT_ID>` - This will use a specific object_id when authenticating with MSI. This is useful if you are using user-assigned identities.
   * `<MSI_CLIENT_ID>` - This will use a specific MSI resource ID when authenticating with MSI. This is useful if you are using user-assigned identities.
+  * `<USE_ENV>` - if set to `true`, it will use service principal from envirorment variable for authenticating. This flag is useful when deploying this image in ACI. However, if you want to use it in Kubernetes, please follow [guidelines](https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables) for securily passing environment variable.
+  * `<TENANT_ID>` - Tenant ID of the service principal
+  * `<CLIENT_ID>` - Client ID of the service principal
+  * `<CLIENT_SECRET>` - Client Secret of the service principal
 * View secrets
 ```
 kubectl get secrets
