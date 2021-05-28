@@ -94,12 +94,18 @@ class KeyVaultAgent(object):
                 credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
         else:
             self._parse_sp_file()
-            authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
-            _logger.info('Using authority: %s', authority)
-            context = AuthenticationContext(authority)
-            _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
-            credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
-                                             self.client_id, self.client_secret)
+            # azure.json file will have "msi" as the client_id and client_secret
+            # if the node is running managed identity
+            if self.client_id == "msi" and self.client_secret == "msi":
+                _logger.info('Using MSI')
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+            else:
+                authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
+                _logger.info('Using authority: %s', authority)
+                context = AuthenticationContext(authority)
+                _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
+                credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
+                                                 self.client_id, self.client_secret)
         return KeyVaultClient(credentials)
 
     def _get_tenant_id(self, tenant_id_from_config):
