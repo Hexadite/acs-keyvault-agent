@@ -72,6 +72,9 @@ class KeyVaultAgent(object):
             self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
+            # in case use msi, potentially we could get mi client id from sp file as well
+            if self.client_id == "msi" and self.client_secret == "msi":
+                self.user_assigned_identity_id = sp_data.get("userAssignedIdentityID", "")
 
         _logger.info('Parsing Service Principle file completed')
 
@@ -107,7 +110,12 @@ class KeyVaultAgent(object):
             # if the node is running managed identity
             if self.client_id == "msi" and self.client_secret == "msi":
                 _logger.info('Using MSI')
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+                # refer _parse_sp_file, potentially we could have mi client id from sp
+                if self.user_assigned_identity_id != "":
+                    _logger.info('Using client_id: %s', self.user_assigned_identity_id)
+                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
+                else:
+                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
             else:
                 authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
                 _logger.info('Using authority: %s', authority)
