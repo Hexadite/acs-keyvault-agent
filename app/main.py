@@ -393,7 +393,7 @@ class KeyVaultAgent(object):
 
     @staticmethod
     def _cert_to_pem(cert):
-        encoded = base64.encodestring(cert)
+        encoded = base64.encodebytes(cert)
         if isinstance(encoded, bytes):
             encoded = encoded.decode("utf-8")
         encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
