@@ -76,16 +76,17 @@ class KeyVaultAgent(object):
             self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
-            # azure-identity migration
-            _logger.info('Assign new azure identity env variable')
-            os.environ["AZURE_TENANT_ID"] = os.environ["TENANT_ID"]
-            os.environ["AZURE_CLIENT_ID"] = os.environ["CLIENT_ID"]
-            os.environ["AZURE_CLIENT_SECRET"] = os.environ["CLIENT_SECRET"]
-            
+
             # in case use msi, potentially we could get mi client id from sp file as well
             if self.client_id == "msi" and self.client_secret == "msi":
                 self.user_assigned_identity_id = sp_data.get("userAssignedIdentityID", "")
-
+            else:
+                # azure-identity migration
+                _logger.info('Assign azure-identity default env variable')
+                os.environ["AZURE_TENANT_ID"] = self.tenant_id
+                os.environ["AZURE_CLIENT_ID"] = self.client_id
+                os.environ["AZURE_CLIENT_SECRET"] = self.client_secret
+            
         _logger.info('Parsing Service Principle file completed')
 
     def _parse_sp_env(self):
@@ -130,8 +131,9 @@ class KeyVaultAgent(object):
                 _logger.info('Using MSI')
                 # refer _parse_sp_file, potentially we could have mi client id from sp
                 if self.user_assigned_identity_id != "":
-                    _logger.info('Using client_id: %s', self.user_assigned_identity_id)
-                    credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME, managed_identity_client_id =self.user_assigned_identity_id)
+                    credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
+                else:
+                    credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
             else:
                 credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
         return credentials
