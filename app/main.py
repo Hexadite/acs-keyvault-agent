@@ -31,9 +31,6 @@ import logging
 import base64
 import requests
 
-from adal import AuthenticationContext
-from azure.keyvault import KeyVaultClient
-from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentication
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from OpenSSL import crypto
