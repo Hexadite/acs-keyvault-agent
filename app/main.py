@@ -128,6 +128,7 @@ class KeyVaultAgent(object):
                 _logger.info('Using MSI')
                 # refer _parse_sp_file, potentially we could have mi client id from sp
                 if self.user_assigned_identity_id != "":
+                    _logger.info('Using client_id: %s', self.user_assigned_identity_id)
                     credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
                 else:
                     credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
