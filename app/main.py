@@ -31,12 +31,13 @@ import logging
 import base64
 import requests
 
-from adal import AuthenticationContext
-from azure.keyvault import KeyVaultClient
-from msrestazure.azure_active_directory import AdalAuthentication, MSIAuthentication
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from OpenSSL import crypto
+from azure.keyvault.secrets import SecretClient
+from azure.keyvault.certificates import CertificateClient
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
+
 
 logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
@@ -72,35 +73,50 @@ class KeyVaultAgent(object):
             self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
+
             # in case use msi, potentially we could get mi client id from sp file as well
             if self.client_id == "msi" and self.client_secret == "msi":
                 self.user_assigned_identity_id = sp_data.get("userAssignedIdentityID", "")
-
+            else:
+                # azure-identity migration
+                _logger.info('Assign azure-identity default env variable')
+                os.environ["AZURE_TENANT_ID"] = self.tenant_id
+                os.environ["AZURE_CLIENT_ID"] = self.client_id
+                os.environ["AZURE_CLIENT_SECRET"] = self.client_secret
+            
         _logger.info('Parsing Service Principle file completed')
 
     def _parse_sp_env(self):
         self.tenant_id = os.environ["TENANT_ID"]
         self.client_id = os.environ["CLIENT_ID"]
         self.client_secret = os.environ["CLIENT_SECRET"]
-        _logger.info('Parsing Service Principle env completed')
 
-    def _get_client(self):
+        _logger.info('Assign new azure identity env variable')
+        os.environ["AZURE_TENANT_ID"] = os.environ["TENANT_ID"]
+        os.environ["AZURE_CLIENT_ID"] = os.environ["CLIENT_ID"]
+        os.environ["AZURE_CLIENT_SECRET"] = os.environ["CLIENT_SECRET"]
+
+        _logger.info('Parsing Service Principle env completed')
+    
+    def _get_credential(self):
         if os.getenv("USE_MSI", "false").lower() == "true":
             _logger.info('Using MSI')
             if "MSI_CLIENT_ID" in os.environ:
                 msi_client_id = os.environ["MSI_CLIENT_ID"]
                 _logger.info('Using client_id: %s', msi_client_id)
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
+                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=msi_client_id)
             elif "MSI_OBJECT_ID" in os.environ:
                 msi_object_id = os.environ["MSI_OBJECT_ID"]
+                identity = {'object_id': msi_object_id}
                 _logger.info('Using object_id: %s', msi_object_id)
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, object_id=msi_object_id)
+                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, identity_config=identity)
             elif "MSI_RESOURCE_ID" in os.environ:
                 msi_resource_id = os.environ["MSI_RESOURCE_ID"]
+                identity = {'resource_id': msi_resource_id}
                 _logger.info('Using resource_id: %s', msi_resource_id)
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, msi_res_id=msi_resource_id)
+                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, identity_config=identity)
             else:
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+                credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
         else:
             if os.getenv("USE_ENV", "false").lower() == "true":
                 self._parse_sp_env()
@@ -113,17 +129,12 @@ class KeyVaultAgent(object):
                 # refer _parse_sp_file, potentially we could have mi client id from sp
                 if self.user_assigned_identity_id != "":
                     _logger.info('Using client_id: %s', self.user_assigned_identity_id)
-                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
+                    credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
                 else:
-                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+                    credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
             else:
-                authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
-                _logger.info('Using authority: %s', authority)
-                context = AuthenticationContext(authority)
-                _logger.info('Using vault resource name: %s and client id: %s', VAULT_RESOURCE_NAME, self.client_id)
-                credentials = AdalAuthentication(context.acquire_token_with_client_credentials, VAULT_RESOURCE_NAME,
-                                                 self.client_id, self.client_secret)
-        return KeyVaultClient(credentials)
+                credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
+        return credentials
 
     def _get_tenant_id(self, tenant_id_from_config):
         if os.getenv('AUTO_DETECT_AAD_TENANT', 'false').lower() != 'true':
@@ -248,28 +259,29 @@ class KeyVaultAgent(object):
         secrets_keys = os.getenv('SECRETS_KEYS')
         self._secrets_namespace = os.getenv('SECRETS_NAMESPACE','default')
 
-        client = self._get_client()
+        credential = self._get_credential()
+        secret_client = SecretClient(vault_url=vault_base_url, credential=credential)
         _logger.info('Using vault: %s', vault_base_url)
 
         # Retrieving all secrets from Key Vault if specified by user
         if secrets_keys is None:
             _logger.info('Retrieving all secrets from Key Vault.')
 
-            all_secrets = list(client.get_secrets(vault_base_url))
+            all_secrets = list(secret_client.list_properties_of_secrets())
             secrets_keys = ';'.join([secret.id.split('/')[-1] for secret in all_secrets])
 
         if secrets_keys is not None:
             for key_info in filter(None, secrets_keys.split(';')):
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
-                secret = client.get_secret(vault_base_url, key_name, key_version)
+                secret = secret_client.get_secret(key_name, key_version)
 
-                secretTypeEnvKey = key_name.upper() + "_SECRET_TYPE"
-                secret_type = os.getenv(secretTypeEnvKey, os.getenv("SECRETS_TYPE", 'Opaque'))
+                secret_type_env_key = key_name.upper() + "_SECRET_TYPE"
+                secret_type = os.getenv(secret_type_env_key, os.getenv("SECRETS_TYPE", 'Opaque'))
                 if secret_type == 'kubernetes.io/tls':
-                    if secret.kid is not None:
+                    if secret.properties.key_id is not None:
                         _logger.info('Secret is backing certificate.')
-                        if secret.content_type == 'application/x-pkcs12':
+                        if secret.properties.content_type == 'application/x-pkcs12':
                             self._create_kubernetes_secret_objects(key_name, secret.value, secret_type)
                         else:
                             _logger.error('Secret is not in pkcs12 format')
@@ -297,14 +309,16 @@ class KeyVaultAgent(object):
             if not os.path.exists(folder):
                 os.makedirs(folder)
 
-        client = self._get_client()
+        credential = self._get_credential()
+        secret_client = SecretClient(vault_url=vault_base_url, credential=credential)
+        certificate_client = CertificateClient(vault_url=vault_base_url, credential=credential)
         _logger.info('Using vault: %s', vault_base_url)
 
         # Retrieving all secrets from Key Vault if specified by user
         if secrets_keys is None:
             _logger.info('Retrieving all secrets from Key Vault.')
 
-            all_secrets = list(client.get_secrets(vault_base_url))
+            all_secrets = list(secret_client.list_properties_of_secrets())
             secrets_keys = ';'.join([secret.id.split('/')[-1] for secret in all_secrets])
 
         if secrets_keys is not None:
@@ -313,11 +327,11 @@ class KeyVaultAgent(object):
                 # Certs and keys can be renamed
                 key_name, key_version, cert_filename, key_filename = self._split_keyinfo(key_info)
                 _logger.info('Retrieving secret name:%s with version: %s output certFileName: %s keyFileName: %s', key_name, key_version, cert_filename, key_filename)
-                secret = client.get_secret(vault_base_url, key_name, key_version)
+                secret = secret_client.get_secret(key_name, key_version)
 
-                if secret.kid is not None:
+                if secret.properties.key_id is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
-                    if secret.content_type == 'application/x-pkcs12':
+                    if secret.properties.content_type == 'application/x-pkcs12':
                         self._dump_pfx(secret.value, cert_filename, key_filename)
                     else:
                         _logger.error('Secret is not in pkcs12 format')
@@ -337,7 +351,7 @@ class KeyVaultAgent(object):
                 # only cert_filename is needed, key_filename is ignored with _
                 key_name, key_version, cert_filename, _ = self._split_keyinfo(key_info)
                 _logger.info('Retrieving cert name:%s with version: %s output certFileName: %s', key_name, key_version, cert_filename)
-                cert = client.get_certificate(vault_base_url, key_name, key_version)
+                cert = certificate_client.get_certificate_version(key_name, key_version)
                 output_path = os.path.join(self._certs_output_folder, cert_filename)
                 _logger.info('Dumping cert value to: %s', output_path)
                 with open(output_path, 'w') as cert_file:
@@ -371,8 +385,9 @@ class KeyVaultAgent(object):
     @staticmethod
     def _dump_secret(secret):
         value = secret.value
-        if secret.tags is not None and 'file-encoding' in secret.tags:
-            encoding = secret.tags['file-encoding']
+        tags = secret.properties.tags
+        if tags is not None and 'file-encoding' in tags:
+            encoding = tags['file-encoding']
             if encoding == 'base64':
                 value = base64.b64decode(value)
 
