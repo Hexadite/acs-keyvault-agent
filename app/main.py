@@ -97,19 +97,19 @@ class KeyVaultAgent(object):
             if "MSI_CLIENT_ID" in os.environ:
                 msi_client_id = os.environ["MSI_CLIENT_ID"]
                 _logger.info('Using client_id: %s', msi_client_id)
-                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=msi_client_id)
+                credentials = ManagedIdentityCredential(client_id=msi_client_id)
             elif "MSI_OBJECT_ID" in os.environ:
                 msi_object_id = os.environ["MSI_OBJECT_ID"]
                 identity = {'object_id': msi_object_id}
                 _logger.info('Using object_id: %s', msi_object_id)
-                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, identity_config=identity)
+                credentials = ManagedIdentityCredential(identity_config=identity)
             elif "MSI_RESOURCE_ID" in os.environ:
                 msi_resource_id = os.environ["MSI_RESOURCE_ID"]
                 identity = {'resource_id': msi_resource_id}
                 _logger.info('Using resource_id: %s', msi_resource_id)
-                credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, identity_config=identity)
+                credentials = ManagedIdentityCredential(identity_config=identity)
             else:
-                credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
+                credentials = DefaultAzureCredential()
         else:
             if os.getenv("USE_ENV", "false").lower() == "true":
                 self._parse_sp_env()
@@ -122,9 +122,9 @@ class KeyVaultAgent(object):
                 # refer _parse_sp_file, potentially we could have mi client id from sp
                 if self.user_assigned_identity_id != "":
                     _logger.info('Using client_id: %s', self.user_assigned_identity_id)
-                    credentials = ManagedIdentityCredential(scopes=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
+                    credentials = ManagedIdentityCredential(client_id=self.user_assigned_identity_id)
                 else:
-                    credentials = DefaultAzureCredential(scopes=VAULT_RESOURCE_NAME)
+                    credentials = DefaultAzureCredential()
             else:
                 _logger.info('Using ClientSecretCredential')
                 principal = {
