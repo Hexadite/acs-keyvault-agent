@@ -76,7 +76,7 @@ class KeyVaultAgent(object):
             # in case use msi, potentially we could get mi client id from sp file as well
             if self.client_id == "msi" and self.client_secret == "msi":
                 self.user_assigned_identity_id = sp_data.get("userAssignedIdentityID", "")
-            
+
         _logger.info('Parsing Service Principle file completed')
 
     def _parse_sp_env(self):
@@ -109,7 +109,7 @@ class KeyVaultAgent(object):
                 _logger.info('Using resource_id: %s', msi_resource_id)
                 credentials = ManagedIdentityCredential(identity_config=identity)
             else:
-                credentials = DefaultAzureCredential()
+                credentials = ManagedIdentityCredential()
         else:
             if os.getenv("USE_ENV", "false").lower() == "true":
                 self._parse_sp_env()
