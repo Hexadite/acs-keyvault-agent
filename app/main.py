@@ -83,11 +83,14 @@ class KeyVaultAgent(object):
 
     def _get_client(self):
         if os.getenv("USE_MSI", "false").lower() == "true":
-            _logger.info('Using MSI')
+            _logger.info('Using MSI from USE_MSI')
             if "MSI_CLIENT_ID" in os.environ:
                 msi_client_id = os.environ["MSI_CLIENT_ID"]
                 _logger.info('Using client_id: %s', msi_client_id)
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
+                try:
+                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
+                except:
+                    credentials = MSIAuthentication(resource=os.getenv('VAULT_BASE_URL'), client_id=msi_client_id)
             elif "MSI_OBJECT_ID" in os.environ:
                 msi_object_id = os.environ["MSI_OBJECT_ID"]
                 _logger.info('Using object_id: %s', msi_object_id)
@@ -106,8 +109,11 @@ class KeyVaultAgent(object):
             # azure.json file will have "msi" as the client_id and client_secret
             # if the node is running managed identity
             if self.client_id == "msi" and self.client_secret == "msi":
-                _logger.info('Using MSI')
-                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+                _logger.info('Using MSI self identity')
+                try:
+                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
+                except:
+                    credentials = MSIAuthentication(resource=os.getenv('VAULT_BASE_URL'))
             else:
                 authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
                 _logger.info('Using authority: %s', authority)
