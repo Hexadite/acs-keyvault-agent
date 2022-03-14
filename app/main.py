@@ -72,6 +72,9 @@ class KeyVaultAgent(object):
             self.tenant_id = self._get_tenant_id(sp_data['tenantId'])
             self.client_id = sp_data['aadClientId']
             self.client_secret = sp_data['aadClientSecret']
+            # in case use msi, potentially we could get mi client id from sp file as well
+            if self.client_id == "msi" and self.client_secret == "msi":
+                self.user_assigned_identity_id = sp_data.get("userAssignedIdentityID", "")
 
         _logger.info('Parsing Service Principle file completed')
 
@@ -83,14 +86,11 @@ class KeyVaultAgent(object):
 
     def _get_client(self):
         if os.getenv("USE_MSI", "false").lower() == "true":
-            _logger.info('Using MSI from USE_MSI')
+            _logger.info('Using MSI because USE_MSI is set')
             if "MSI_CLIENT_ID" in os.environ:
                 msi_client_id = os.environ["MSI_CLIENT_ID"]
                 _logger.info('Using client_id: %s', msi_client_id)
-                try:
-                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
-                except:
-                    credentials = MSIAuthentication(resource=os.getenv('VAULT_BASE_URL'), client_id=msi_client_id)
+                credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=msi_client_id)
             elif "MSI_OBJECT_ID" in os.environ:
                 msi_object_id = os.environ["MSI_OBJECT_ID"]
                 _logger.info('Using object_id: %s', msi_object_id)
@@ -109,11 +109,13 @@ class KeyVaultAgent(object):
             # azure.json file will have "msi" as the client_id and client_secret
             # if the node is running managed identity
             if self.client_id == "msi" and self.client_secret == "msi":
-                _logger.info('Using MSI self identity')
-                try:
+                _logger.info('Using pod managed MSI')
+                # refer _parse_sp_file, potentially we could have mi client id from sp
+                if self.user_assigned_identity_id != "":
+                    _logger.info('Using client_id: %s', self.user_assigned_identity_id)
+                    credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME, client_id=self.user_assigned_identity_id)
+                else:
                     credentials = MSIAuthentication(resource=VAULT_RESOURCE_NAME)
-                except:
-                    credentials = MSIAuthentication(resource=os.getenv('VAULT_BASE_URL'))
             else:
                 authority = '/'.join([AZURE_AUTHORITY_SERVER.rstrip('/'), self.tenant_id])
                 _logger.info('Using authority: %s', authority)
@@ -391,7 +393,7 @@ class KeyVaultAgent(object):
 
     @staticmethod
     def _cert_to_pem(cert):
-        encoded = base64.encodestring(cert)
+        encoded = base64.encodebytes(cert)
         if isinstance(encoded, bytes):
             encoded = encoded.decode("utf-8")
         encoded = '-----BEGIN CERTIFICATE-----\n' + encoded + '-----END CERTIFICATE-----\n'
