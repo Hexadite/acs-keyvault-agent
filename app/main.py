@@ -86,7 +86,7 @@ class KeyVaultAgent(object):
 
     def _get_client(self):
         if os.getenv("USE_MSI", "false").lower() == "true":
-            _logger.info('Using MSI')
+            _logger.info('Using MSI because USE_MSI is set')
             if "MSI_CLIENT_ID" in os.environ:
                 msi_client_id = os.environ["MSI_CLIENT_ID"]
                 _logger.info('Using client_id: %s', msi_client_id)
@@ -109,7 +109,7 @@ class KeyVaultAgent(object):
             # azure.json file will have "msi" as the client_id and client_secret
             # if the node is running managed identity
             if self.client_id == "msi" and self.client_secret == "msi":
-                _logger.info('Using MSI')
+                _logger.info('Using pod managed MSI')
                 # refer _parse_sp_file, potentially we could have mi client id from sp
                 if self.user_assigned_identity_id != "":
                     _logger.info('Using client_id: %s', self.user_assigned_identity_id)
