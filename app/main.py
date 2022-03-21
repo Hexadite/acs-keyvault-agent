@@ -42,6 +42,8 @@ logging.basicConfig(level=logging.INFO,
                     format='|%(asctime)s|%(levelname)-5s|%(process)d|%(thread)d|%(name)s|%(message)s')
 
 _logger = logging.getLogger('keyvault-agent')
+logging_core_pipeline = logging.getLogger('azure.core.pipeline.policies.http_logging_policy')
+logging_core_pipeline.setLevel(logging.WARNING)
 
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
 VAULT_RESOURCE_NAME = os.getenv('VAULT_RESOURCE_NAME', 'https://vault.azure.net')
