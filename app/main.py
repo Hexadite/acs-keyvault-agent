@@ -46,7 +46,6 @@ logging_core_pipeline = logging.getLogger('azure.core.pipeline.policies.http_log
 logging_core_pipeline.setLevel(logging.WARNING)
 
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
-VAULT_RESOURCE_NAME = os.getenv('VAULT_RESOURCE_NAME', 'https://vault.azure.net')
 
 class KeyVaultAgent(object):
     """
