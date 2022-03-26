@@ -83,6 +83,7 @@ docker push <image_tag>
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controls this behavior.
+  * `<SAVE_PFX>` - If `true`, the original PFX exported from Azure Key Vault is saved alongside the PEM format key file, with a `.pfx` file extension, for any certificates to be stored in the filesystem. Default is `false`.
   * `<VAULT_BASE_URL>` - A string value that is the base url of the keyvault. It should look something like this: `https://<NAME>.vault.azure.net`.
   * `<SECRETS_TYPE>` - a string value that determines the type of secret created. For example, 'kubernetes.io/tls', 'Opaque' etc. Default is 'Opaque'.
   * If you like to create secrets of a particular kind (for example for use in DaemonSets), create an environment variable with the name of the secret that you are creating in uppercase appended by `_SECRET_TYPE`. For example, if the key name in keyvault is `mysecret` then to create a secret of type `MyCustomType`, set the environment variable `MYSECRET_SECRET_TYPE` to `MyCustomType`. This will be applicable only for that secret name, and overrides any value set for '<SECRETS_TYPE>' key. Default is 'Opaque'.
