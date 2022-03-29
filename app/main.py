@@ -381,7 +381,7 @@ class KeyVaultAgent(object):
 
         # Saves the PFX file together with the key file (with .pfx extension).
         # As it contains key material, we save it to the same place as keys.
-        if os.getenv('SAVE_PFX','true').lower() == "true":
+        if os.getenv('SAVE_PFX','false').lower() == "true":
             _logger.info('Dumping PFX to: %s', pfx_path)
 
             with open(pfx_path, 'wb') as pfx_file:
