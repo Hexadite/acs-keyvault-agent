@@ -368,14 +368,24 @@ class KeyVaultAgent(object):
         if (cert_filename == key_filename):
             key_path = os.path.join(self._keys_output_folder, key_filename)
             cert_path = os.path.join(self._certs_output_folder, cert_filename)
+            pfx_path = os.path.join(self._keys_output_folder, key_filename + ".pfx")
         else:
             # write to certs_keys folder when cert_filename and key_filename specified
             key_path = os.path.join(self._cert_keys_output_folder, key_filename)
             cert_path = os.path.join(self._cert_keys_output_folder, cert_filename)
+            pfx_path = os.path.join(self._cert_keys_output_folder, key_filename + ".pfx")
 
         _logger.info('Dumping key value to: %s', key_path)
         with open(key_path, 'w') as key_file:
             key_file.write(pk.decode())
+
+        # Saves the PFX file together with the key file (with .pfx extension).
+        # As it contains key material, we save it to the same place as keys.
+        if os.getenv('SAVE_PFX','false').lower() == "true":
+            _logger.info('Dumping PFX to: %s', pfx_path)
+
+            with open(pfx_path, 'wb') as pfx_file:
+                pfx_file.write(base64.b64decode(pfx))
 
         _logger.info('Dumping certs to: %s', cert_path)
         with open(cert_path, 'w') as cert_file:
