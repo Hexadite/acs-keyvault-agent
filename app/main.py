@@ -46,6 +46,7 @@ logging_core_pipeline = logging.getLogger('azure.core.pipeline.policies.http_log
 logging_core_pipeline.setLevel(logging.WARNING)
 
 AZURE_AUTHORITY_SERVER = os.getenv('AZURE_AUTHORITY_SERVER', 'https://login.microsoftonline.com/')
+TIMEOUT = int(os.getenv('TIMEOUT', '300'))
 
 class KeyVaultAgent(object):
     """
@@ -260,7 +261,7 @@ class KeyVaultAgent(object):
         self._secrets_namespace = os.getenv('SECRETS_NAMESPACE','default')
 
         credential = self._get_credential()
-        secret_client = SecretClient(vault_url=vault_base_url, credential=credential)
+        secret_client = SecretClient(vault_url=vault_base_url, credential=credential, timeout=TIMEOUT)
         _logger.info('Using vault: %s', vault_base_url)
 
         # Retrieving all secrets from Key Vault if specified by user
@@ -310,8 +311,8 @@ class KeyVaultAgent(object):
                 os.makedirs(folder)
 
         credential = self._get_credential()
-        secret_client = SecretClient(vault_url=vault_base_url, credential=credential)
-        certificate_client = CertificateClient(vault_url=vault_base_url, credential=credential)
+        secret_client = SecretClient(vault_url=vault_base_url, credential=credential, timeout=TIMEOUT)
+        certificate_client = CertificateClient(vault_url=vault_base_url, credential=credential, timeout=TIMEOUT)
         _logger.info('Using vault: %s', vault_base_url)
 
         # Retrieving all secrets from Key Vault if specified by user

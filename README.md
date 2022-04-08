@@ -96,6 +96,7 @@ docker push <image_tag>
   * `<TENANT_ID>` - Tenant ID of the service principal
   * `<CLIENT_ID>` - Client ID of the service principal
   * `<CLIENT_SECRET>` - Client Secret of the service principal
+  * `<TIMEOUT>` - Add Timeouts for all Clients default(300s) 
 * View secrets
 ```
 kubectl get secrets
