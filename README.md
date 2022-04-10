@@ -42,6 +42,7 @@ docker push <image_tag>
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controls this behavior.
+  * `<MYSECRET_DOWNLOAD_CA_CERTIFICATE>` - Boolean value that determines whether root CA certificate should be downloaded for `MYSECRET`. `MYSECRET` is the secret name, and it **must** be listed in `<SECRET_KEYS>`. This value overrides global `<DOWNLOAD_CA_CERTIFICATES>` environment variable.
   * `<CERTS_KEYS>` - a list of certificates and their versions (optional), represented as a string, formatted like: `<cert_name>:<cert_version>;<another_cert>`. Certificates will be downloaded in PEM format.
 
 
@@ -83,6 +84,7 @@ docker push <image_tag>
   for example
   `mysecret:9d90276b377b4d9ea10763c153a2f015;anotherone;`
   * `<DOWNLOAD_CA_CERTIFICATES>` - By default, CA certificates are downloaded as well. Setting the environment variable to `true` or `false` controls this behavior.
+  * `<MYSECRET_DOWNLOAD_CA_CERTIFICATE>` - Boolean value that determines whether root CA certificate should be downloaded for `MYSECRET`. `MYSECRET` is the secret name, and it **must** be listed in `<SECRET_KEYS>`. This value overrides global `<DOWNLOAD_CA_CERTIFICATES>` environment variable.
   * `<SAVE_PFX>` - If `true`, the original PFX exported from Azure Key Vault is saved alongside the PEM format key file, with a `.pfx` file extension, for any certificates to be stored in the filesystem. Default is `false`.
   * `<VAULT_BASE_URL>` - A string value that is the base url of the keyvault. It should look something like this: `https://<NAME>.vault.azure.net`.
   * `<SECRETS_TYPE>` - a string value that determines the type of secret created. For example, 'kubernetes.io/tls', 'Opaque' etc. Default is 'Opaque'.
