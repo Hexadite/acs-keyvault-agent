@@ -219,8 +219,9 @@ class KeyVaultAgent(object):
         if secret.type == 'kubernetes.io/tls':
             _logger.info('Extracting private key and certificate.')
             p12 = crypto.load_pkcs12(base64.b64decode(secret_value))
+            secret_download_ca_override_env_key = key.upper() + "_DOWNLOAD_CA_CERTIFICATE"
             ca_certs = ()
-            if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
+            if os.getenv(secret_download_ca_override_env_key, os.getenv('DOWNLOAD_CA_CERTIFICATES','true')).lower() == "true":
                 ca_certs = (p12.get_ca_certificates() or ())
                 certs = (p12.get_certificate(),) + ca_certs
             else:
@@ -333,7 +334,7 @@ class KeyVaultAgent(object):
                 if secret.properties.key_id is not None:
                     _logger.info('Secret is backing certificate. Dumping private key and certificate.')
                     if secret.properties.content_type == 'application/x-pkcs12':
-                        self._dump_pfx(secret.value, cert_filename, key_filename)
+                        self._dump_pfx(secret.value, cert_filename, key_filename, key_name)
                     else:
                         _logger.error('Secret is not in pkcs12 format')
                         sys.exit(1)
@@ -358,10 +359,11 @@ class KeyVaultAgent(object):
                 with open(output_path, 'w') as cert_file:
                     cert_file.write(self._cert_to_pem(cert.cer))
 
-    def _dump_pfx(self, pfx, cert_filename, key_filename):
+    def _dump_pfx(self, pfx, cert_filename, key_filename, key_name):
         p12 = crypto.load_pkcs12(base64.b64decode(pfx))
         pk = crypto.dump_privatekey(crypto.FILETYPE_PEM, p12.get_privatekey())
-        if os.getenv('DOWNLOAD_CA_CERTIFICATES','true').lower() == "true":
+        secret_download_ca_override_env_key = key_name.upper() + "_DOWNLOAD_CA_CERTIFICATE"
+        if os.getenv(secret_download_ca_override_env_key, os.getenv('DOWNLOAD_CA_CERTIFICATES','true')).lower() == "true":
             certs = (p12.get_certificate(),) + (p12.get_ca_certificates() or ())
         else:
             certs = (p12.get_certificate(),)
