@@ -1,4 +1,7 @@
 # Azure Key Vault Agent for ACS (Kubernetes)
+
+**WARNING** :warning: This solution has been deprecated. Please use [Azure Key Vault Provider for Secret Store CSI Driver](https://github.com/Azure/secrets-store-csi-driver-provider-azure). For AKS, use the Azure Key Vault Provider for Secret Store CSI Driver [managed AKS add-on](https://docs.microsoft.com/en-us/azure/aks/csi-secrets-store-driver) 
+
 An Azure Key Vault agent container that grabs secrets from Azure Key Vault securely and passes them to other containers in its pod, either by shared volume or Kubernetes secrets objects
 
 # How does it work?
